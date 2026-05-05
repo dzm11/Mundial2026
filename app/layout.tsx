@@ -1,10 +1,15 @@
-import { Geist, Geist_Mono, Inter } from "next/font/google"
+import { Geist_Mono, Inter } from "next/font/google"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'})
+export const metadata = {
+  title: "Meczyki — Mundial 2026",
+  description: "Aplikacja typerska na Mistrzostwa Świata 2026.",
+}
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
 const fontMono = Geist_Mono({
   subsets: ["latin"],
@@ -18,7 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="pl"
       suppressHydrationWarning
       className={cn("antialiased", fontMono.variable, "font-sans", inter.variable)}
     >

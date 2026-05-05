@@ -55,8 +55,12 @@ Otwórz http://localhost:3000, zarejestruj konto i typuj.
 
 1. `git push` → import w Vercel.
 2. Wgraj te same env vars w **Project Settings → Environment Variables**.
-3. Cron z `vercel.json` ruszy automatycznie (`*/5 * * * *`). Vercel sam doda nagłówek
-   `Authorization: Bearer $CRON_SECRET`.
+3. Cron synchronizujący wyniki uruchamia GitHub Actions (Vercel Hobby ogranicza cron
+   do 1×/dziennie). W repo: **Settings → Secrets and variables → Actions** dodaj:
+   - `APP_URL` — np. `https://mundial2026.vercel.app` (bez slasha)
+   - `CRON_SECRET` — ta sama wartość co w env Vercela
+   Workflow `.github/workflows/sync-matches.yml` ruszy automatycznie co 5 minut.
+   Można też odpalić ręcznie z zakładki **Actions** → *Sync matches* → *Run workflow*.
 
 ## Skrypty
 

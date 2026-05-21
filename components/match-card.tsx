@@ -48,16 +48,6 @@ function formatKickoff(iso: string): string {
   })
 }
 
-function getMatchInitials(name: string | null | undefined): string {
-  if (!name) return "?"
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
 // ---------------------------------------------------------------------------
 // Points badge for the current user
 // ---------------------------------------------------------------------------
@@ -136,9 +126,7 @@ function FriendsSheetBody({
       <div className="flex flex-col gap-1 px-4 pb-6">
         {players.map((player, idx) => {
           const row = predMap.get(player.id)
-          const initials = player.username
-            ? player.username.slice(0, 2).toUpperCase()
-            : getMatchInitials(player.first_name + " " + player.last_name)
+          const initials = player.username.slice(0, 2).toUpperCase()
 
           return (
             <div key={player.id}>

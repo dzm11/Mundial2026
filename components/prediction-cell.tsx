@@ -217,7 +217,6 @@ function StatusBadge({
       {state === "err" && (
         <span
           className="inline-flex items-center gap-1 rounded-md border border-destructive bg-destructive/15 px-1.5 py-0.5 text-[10px] font-medium text-destructive whitespace-nowrap shadow-sm"
-          title={errorMsg ?? "Błąd zapisu"}
         >
           <AlertCircle className="size-3" aria-hidden />
           {errorMsg ?? "Błąd"}

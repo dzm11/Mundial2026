@@ -1,0 +1,413 @@
+"use client"
+
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react"
+import { toast } from "sonner"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Flag } from "@/components/flag"
+import { PhaseFilter } from "@/components/phase-filter"
+import { PredictionCell } from "@/components/prediction-cell"
+import { confirmAllPredictions } from "@/app/(app)/actions"
+import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
+import { matchInPhase, shortStage, type PhaseKey } from "@/lib/groups"
+import { cn } from "@/lib/utils"
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Props = {
+  matches: MatchWithTeams[]
+  players: Player[]
+  predictions: PredictionRow[]
+  currentUserId: string
+}
+
+type GroupedSection = {
+  key: string
+  title: string
+  matches: MatchWithTeams[]
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatKickoff(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pl-PL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function dayKey(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function dayLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("pl-PL", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  })
+}
+
+// ── Module-scope stable references for useSyncExternalStore ───────────────────
+
+const subscribeNow = (cb: () => void) => {
+  const id = setInterval(cb, 30_000)
+  return () => clearInterval(id)
+}
+const getNowBucket = () => Math.floor(Date.now() / 30_000) * 30_000
+const getServerNow = () => 0
+
+function useNowTick(): number {
+  return useSyncExternalStore(subscribeNow, getNowBucket, getServerNow)
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function ResultBox({ value, status }: { value: number | null; status: string }) {
+  const isFinal = status === "FINISHED" || status === "IN_PLAY" || status === "PAUSED"
+  return (
+    <span
+      className={cn(
+        "inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded border px-1.5 font-mono text-base tabular-nums",
+        isFinal ? "border-foreground/30 font-semibold" : "border-dashed text-muted-foreground/40",
+      )}
+    >
+      {value ?? "–"}
+    </span>
+  )
+}
+
+function Legend() {
+  return (
+    <div className="text-muted-foreground flex flex-wrap items-center gap-4 text-xs">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="bg-success/15 border-success/60 inline-block h-3 w-3 rounded border" />
+        3 pkt — dokładny wynik
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="bg-warning/15 border-warning/60 inline-block h-3 w-3 rounded border" />
+        1 pkt — trafiony zwycięzca/remis
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="border-border inline-block h-3 w-3 rounded border" />
+        0 pkt — pudło
+      </span>
+      <span>· Cudze typy odsłaniają się w momencie kick-offu.</span>
+    </div>
+  )
+}
+
+function SectionBlock({
+  section,
+  players,
+  predMap,
+  currentUserId,
+  now,
+}: {
+  section: GroupedSection
+  players: Player[]
+  predMap: Map<number, Map<string, PredictionRow>>
+  currentUserId: string
+  now: number
+}) {
+  return (
+    <>
+      {/* Day-section header row */}
+      <TableRow className="bg-muted hover:bg-muted">
+        {/* Sticky first cell of section row — must be fully opaque so scrolled content doesn't bleed through */}
+        <TableCell
+          className="sticky left-0 z-10 bg-muted px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"
+        >
+          {section.title}
+        </TableCell>
+        {/* Remaining cells */}
+        <TableCell
+          colSpan={4 + players.length}
+          className="bg-muted py-2"
+        />
+      </TableRow>
+
+      {section.matches.map((match) => {
+        const matchStarted = new Date(match.kickoff_at).getTime() <= now
+        const userPreds = predMap.get(match.id) ?? new Map()
+
+        return (
+          <TableRow key={match.id} className="border-t">
+            {/* ── Sticky first column: match info ── */}
+            <TableCell className="sticky left-0 z-10 bg-card px-3 py-2">
+              {/* This cell needs bg-card to mask scrolling rows */}
+              <div className="flex flex-col gap-0.5 whitespace-nowrap">
+                <span className="font-mono font-medium text-foreground">
+                  {formatKickoff(match.kickoff_at)}
+                </span>
+                <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
+                  {shortStage(match.stage, match.group_letter)}
+                </span>
+                {match.status === "IN_PLAY" && (
+                  <Badge variant="destructive" className="animate-pulse w-fit text-[10px]">
+                    LIVE
+                  </Badge>
+                )}
+                {match.status === "FINISHED" && (
+                  <span className="text-success text-[10px]">FT</span>
+                )}
+              </div>
+            </TableCell>
+
+            {/* Home team */}
+            <TableCell className="px-2 py-2 text-right">
+              <span className="inline-flex items-center gap-2">
+                <span className="font-medium">{match.team1?.name ?? "—"}</span>
+                <Flag isoCode={match.team1?.iso_code} alt={match.team1?.name ?? ""} />
+              </span>
+            </TableCell>
+
+            {/* Result boxes */}
+            <TableCell className="px-1 py-2 text-center">
+              <ResultBox value={match.result1} status={match.status} />
+            </TableCell>
+            <TableCell className="px-1 py-2 text-center">
+              <ResultBox value={match.result2} status={match.status} />
+            </TableCell>
+
+            {/* Away team */}
+            <TableCell className="px-2 py-2 text-left">
+              <span className="inline-flex items-center gap-2">
+                <Flag isoCode={match.team2?.iso_code} alt={match.team2?.name ?? ""} />
+                <span className="font-medium">{match.team2?.name ?? "—"}</span>
+              </span>
+            </TableCell>
+
+            {/* Per-player prediction cells */}
+            {players.map((player) => {
+              const p = userPreds.get(player.id)
+              return (
+                <TableCell
+                  key={player.id}
+                  className={cn(
+                    "px-2 py-2 text-center align-middle",
+                    player.id === currentUserId && "bg-primary/5",
+                  )}
+                >
+                  <PredictionCell
+                    key={`${match.id}-${player.id}-${p?.pred1 ?? "x"}-${p?.pred2 ?? "x"}`}
+                    matchId={match.id}
+                    matchStarted={matchStarted}
+                    isOwn={player.id === currentUserId}
+                    pred1={p?.pred1 ?? null}
+                    pred2={p?.pred2 ?? null}
+                    confirmed={!!p?.confirmed_at}
+                    actualResult1={match.result1}
+                    actualResult2={match.result2}
+                  />
+                </TableCell>
+              )
+            })}
+          </TableRow>
+        )
+      })}
+    </>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function PredictionsMatrix({
+  matches,
+  players,
+  predictions,
+  currentUserId,
+}: Props) {
+  const [phase, setPhase] = useState<PhaseKey>("upcoming")
+  const [pending, startTransition] = useTransition()
+  const now = useNowTick()
+
+  // Build predMap: matchId → userId → PredictionRow
+  const predMap = useMemo(() => {
+    const m = new Map<number, Map<string, PredictionRow>>()
+    for (const p of predictions) {
+      if (!m.has(p.match_id)) m.set(p.match_id, new Map())
+      m.get(p.match_id)!.set(p.user_id, p)
+    }
+    return m
+  }, [predictions])
+
+  // Filter matches by selected phase
+  const filteredMatches = useMemo(
+    () => matches.filter((m) => matchInPhase(m, phase, now)),
+    [matches, phase, now],
+  )
+
+  // Group filtered matches by calendar day (local timezone), sorted chronologically
+  const sections = useMemo<GroupedSection[]>(() => {
+    const buckets = new Map<string, MatchWithTeams[]>()
+    for (const match of filteredMatches) {
+      const key = dayKey(match.kickoff_at)
+      if (!buckets.has(key)) buckets.set(key, [])
+      buckets.get(key)!.push(match)
+    }
+    return [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, dayMatches]) => ({
+        key,
+        title: dayLabel(dayMatches[0].kickoff_at),
+        matches: dayMatches,
+      }))
+  }, [filteredMatches])
+
+  const onConfirmAll = () => {
+    startTransition(async () => {
+      const result = await confirmAllPredictions()
+      if (result.ok) {
+        toast.success("Typy zatwierdzone!", {
+          description: "Wszystkie niezatwierdzone typy zostały zapisane.",
+        })
+      } else {
+        toast.error("Nie udało się zatwierdzić", {
+          description: result.error ?? "Spróbuj ponownie.",
+        })
+      }
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls row: phase filter + confirm button */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PhaseFilter value={phase} onValueChange={setPhase} />
+        <Button onClick={onConfirmAll} disabled={pending} size="sm">
+          {pending ? "Zapisuję…" : "Zatwierdź moje typy"}
+        </Button>
+      </div>
+
+      {/* Empty state when no matches match the filter */}
+      {sections.length === 0 ? (
+        <div className="flex items-center justify-center py-16">
+          <p className="text-muted-foreground text-sm">
+            Brak meczów w wybranej fazie.
+          </p>
+        </div>
+      ) : (
+        /*
+         * Scroll container strategy:
+         * - The shadcn `Table` component is intentionally NOT used here because its
+         *   wrapper `<div>` has a non-configurable `overflow-x-auto` that would create
+         *   a nested scroll container and break two-axis `position: sticky`.
+         * - A raw `<table>` is placed directly inside the single ScrollArea viewport,
+         *   which is the sole scroll root for both axes.  `TableHeader`, `TableBody`,
+         *   `TableRow`, `TableHead`, and `TableCell` from shadcn/ui are used for the
+         *   inner structure.
+         * - `maxHeight` on the ScrollArea makes the viewport vertically finite so
+         *   `sticky top-0` on the header row works correctly.
+         */
+        <ScrollArea
+          className="rounded-lg border bg-card"
+          style={{ maxHeight: "calc(100vh - 14rem)" }}
+        >
+            <table className="w-full caption-bottom text-sm">
+              {/* ── Sticky header ── */}
+              <TableHeader>
+                <TableRow className="border-b">
+                  {/*
+                   * Top-left intersection cell — must have the HIGHEST z-index (z-30)
+                   * and a solid background to mask both horizontally and vertically
+                   * scrolled content.
+                   */}
+                  <TableHead
+                    className={cn(
+                      "sticky left-0 top-0 z-30 bg-card",
+                      "w-[7.5rem] min-w-[7.5rem] px-3 py-3",
+                    )}
+                  >
+                    <span className="font-display text-xs uppercase tracking-wide text-muted-foreground">
+                      Termin
+                    </span>
+                  </TableHead>
+
+                  {/* Home team header — sticky top, not left */}
+                  <TableHead className="sticky top-0 z-20 bg-card px-3 py-3 text-right">
+                    <span className="text-xs font-medium text-muted-foreground">Gospodarz</span>
+                  </TableHead>
+
+                  {/* Score headers */}
+                  <TableHead
+                    className="sticky top-0 z-20 bg-card px-1 py-3 text-center"
+                    colSpan={2}
+                  >
+                    <span className="font-display text-xs uppercase tracking-wide text-muted-foreground">
+                      Wynik
+                    </span>
+                  </TableHead>
+
+                  {/* Away team header */}
+                  <TableHead className="sticky top-0 z-20 bg-card px-3 py-3 text-left">
+                    <span className="text-xs font-medium text-muted-foreground">Gość</span>
+                  </TableHead>
+
+                  {/* Per-player header cells */}
+                  {players.map((p, idx) => (
+                    <TableHead
+                      key={p.id}
+                      className={cn(
+                        "sticky top-0 z-20 bg-card min-w-[6rem] px-2 py-3 text-center",
+                        p.id === currentUserId && "bg-primary/10",
+                      )}
+                    >
+                      <div className="flex flex-col items-center gap-1">
+                        <Avatar className="size-7">
+                          {p.avatar_url && (
+                            <AvatarImage src={p.avatar_url} alt={p.username} />
+                          )}
+                          <AvatarFallback className="text-xs">
+                            {p.username.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="break-all text-xs font-normal leading-tight">
+                          {p.username}
+                        </span>
+                        <Badge
+                          variant={idx === 0 ? "default" : "secondary"}
+                          className="font-mono"
+                        >
+                          {p.total_points}
+                        </Badge>
+                      </div>
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+
+              {/* ── Body ── */}
+              <TableBody>
+                {sections.map((section) => (
+                  <SectionBlock
+                    key={section.key}
+                    section={section}
+                    players={players}
+                    predMap={predMap}
+                    currentUserId={currentUserId}
+                    now={now}
+                  />
+                ))}
+              </TableBody>
+            </table>
+          {/* Horizontal scrollbar rendered by ScrollArea */}
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      )}
+
+      <Legend />
+    </div>
+  )
+}

@@ -28,7 +28,7 @@ export function Flag({ isoCode, className, alt }: Props) {
       height={16}
       alt={alt ?? isoCode.toUpperCase()}
       unoptimized
-      className={cn("inline-block rounded-sm align-middle ring-1 ring-black/10", className)}
+      className={cn("inline-block rounded-sm align-middle ring-1 ring-white/15", className)}
     />
   )
 }

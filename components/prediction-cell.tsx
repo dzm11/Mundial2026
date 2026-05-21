@@ -4,6 +4,13 @@ import { useState, useTransition, useRef } from "react"
 import { upsertPrediction } from "@/app/(app)/actions"
 import { cn } from "@/lib/utils"
 import { Lock, Check, AlertCircle, Loader2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 type Props = {
   matchId: number
@@ -64,28 +71,36 @@ export function PredictionCell({
         <span className="text-muted-foreground/40 inline-block px-1 text-sm">— : —</span>
       )
     }
+
+    const tooltipText =
+      correct === "exact"
+        ? "Dokładny wynik (3 pkt)"
+        : correct === "outcome"
+          ? "Trafiony zwycięzca (1 pkt)"
+          : correct === "miss"
+            ? "Pudło (0 pkt)"
+            : "Typ zablokowany"
+
     return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-sm font-mono tabular-nums",
-          correct === "exact" && "border-green-500 bg-green-50 text-green-700",
-          correct === "outcome" && "border-amber-400 bg-amber-50 text-amber-700",
-          correct === "miss" && "border-muted-foreground/20 text-muted-foreground",
-          !correct && "border-muted-foreground/30",
-        )}
-        title={
-          correct === "exact"
-            ? "Dokładny wynik (3 pkt)"
-            : correct === "outcome"
-              ? "Trafiony zwycięzca (1 pkt)"
-              : correct === "miss"
-                ? "Pudło (0 pkt)"
-                : "Typ zablokowany"
-        }
-      >
-        {isOwn && !matchStarted && <Lock className="size-3" aria-hidden />}
-        {initial1}:{initial2}
-      </span>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-sm font-mono tabular-nums",
+                correct === "exact" && "border-success/60 bg-success/15 text-success",
+                correct === "outcome" && "border-warning/60 bg-warning/15 text-warning",
+                correct === "miss" && "border-border text-muted-foreground",
+                !correct && "border-border",
+              )}
+            >
+              {isOwn && !matchStarted && <Lock className="size-3" aria-hidden />}
+              {initial1}:{initial2}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{tooltipText}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     )
   }
 
@@ -132,19 +147,11 @@ export function PredictionCell({
     }
   }
 
-  const inputClass = cn(
-    "h-7 w-8 rounded border bg-background text-center text-sm font-mono tabular-nums",
-    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-    confirmed && saved !== "err" && "border-primary/40",
-    saved === "ok" && "border-green-500",
-    saved === "err" && "border-destructive ring-1 ring-destructive/40",
-  )
-
   return (
     // Stała szerokość kontenera — status (icon) jest pozycjonowany absolutnie,
     // więc pojawienie się ✓/⚠ nie przesuwa wiersza tabeli.
     <span className="relative inline-flex w-[5.5rem] items-center justify-center gap-0.5">
-      <input
+      <Input
         type="text"
         inputMode="numeric"
         pattern="\d*"
@@ -152,12 +159,17 @@ export function PredictionCell({
         value={v1}
         onChange={(e) => onChange(0, e.target.value)}
         onBlur={() => save(v1, v2)}
-        className={inputClass}
+        className={cn(
+          "h-9 w-11 text-center font-mono tabular-nums text-base sm:h-8 sm:w-9",
+          confirmed && saved !== "err" && "border-primary/40",
+          saved === "ok" && "border-success",
+          saved === "err" && "border-destructive",
+        )}
         aria-label="Wynik gospodarzy"
         aria-invalid={saved === "err"}
       />
       <span className="text-muted-foreground text-xs">:</span>
-      <input
+      <Input
         type="text"
         inputMode="numeric"
         pattern="\d*"
@@ -165,7 +177,12 @@ export function PredictionCell({
         value={v2}
         onChange={(e) => onChange(1, e.target.value)}
         onBlur={() => save(v1, v2)}
-        className={inputClass}
+        className={cn(
+          "h-9 w-11 text-center font-mono tabular-nums text-base sm:h-8 sm:w-9",
+          confirmed && saved !== "err" && "border-primary/40",
+          saved === "ok" && "border-success",
+          saved === "err" && "border-destructive",
+        )}
         aria-label="Wynik gości"
         aria-invalid={saved === "err"}
       />
@@ -195,11 +212,11 @@ function StatusBadge({
         <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Zapisuję" />
       )}
       {state === "ok" && (
-        <Check className="size-3.5 text-green-600" aria-label="Zapisane" />
+        <Check className="size-3.5 text-success" aria-label="Zapisane" />
       )}
       {state === "err" && (
         <span
-          className="inline-flex items-center gap-1 rounded-md border border-destructive bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive whitespace-nowrap shadow-sm"
+          className="inline-flex items-center gap-1 rounded-md border border-destructive bg-destructive/15 px-1.5 py-0.5 text-[10px] font-medium text-destructive whitespace-nowrap shadow-sm"
           title={errorMsg ?? "Błąd zapisu"}
         >
           <AlertCircle className="size-3" aria-hidden />

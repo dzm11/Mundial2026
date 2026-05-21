@@ -6,16 +6,21 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { loginSchema, registerSchema, usernameToEmail } from "@/lib/validation"
 
-export type AuthState = { error?: string; fieldErrors?: Record<string, string> }
+export type AuthState = {
+  error?: string
+  fieldErrors?: Record<string, string>
+  values?: { username?: string }
+}
 
 export async function registerAction(
   _prev: AuthState | undefined,
   formData: FormData,
 ): Promise<AuthState> {
+  const usernameRaw = formData.get("username")
+  const values = { username: typeof usernameRaw === "string" ? usernameRaw : "" }
+
   const parsed = registerSchema.safeParse({
-    username: formData.get("username"),
-    firstName: formData.get("firstName"),
-    lastName: formData.get("lastName"),
+    username: usernameRaw,
     password: formData.get("password"),
   })
 
@@ -27,10 +32,10 @@ export async function registerAction(
         fieldErrors[path] = issue.message
       }
     }
-    return { fieldErrors }
+    return { fieldErrors, values }
   }
 
-  const { username, firstName, lastName, password } = parsed.data
+  const { username, password } = parsed.data
   const admin = createAdminClient()
 
   // Sprawdź unikalność loginu
@@ -39,7 +44,7 @@ export async function registerAction(
     .select("id")
     .ilike("username", username)
     .maybeSingle()
-  if (existing) return { fieldErrors: { username: "Login jest już zajęty" } }
+  if (existing) return { fieldErrors: { username: "Login jest już zajęty" }, values }
 
   // Stwórz usera z syntetycznym e-mailem
   const email = usernameToEmail(username)
@@ -47,27 +52,27 @@ export async function registerAction(
     email,
     password,
     email_confirm: true,
-    user_metadata: { username, first_name: firstName, last_name: lastName },
+    user_metadata: { username },
   })
   if (createErr || !created.user) {
-    return { error: createErr?.message ?? "Nie udało się utworzyć konta" }
+    return { error: createErr?.message ?? "Nie udało się utworzyć konta", values }
   }
 
   const { error: profileErr } = await admin.from("profiles").insert({
     id: created.user.id,
     username,
-    first_name: firstName,
-    last_name: lastName,
+    first_name: "",
+    last_name: "",
   })
   if (profileErr) {
     await admin.auth.admin.deleteUser(created.user.id)
-    return { error: profileErr.message }
+    return { error: profileErr.message, values }
   }
 
   // Zaloguj od razu
   const supabase = await createClient()
   const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
-  if (signInErr) return { error: signInErr.message }
+  if (signInErr) return { error: signInErr.message, values }
 
   revalidatePath("/", "layout")
   redirect("/")
@@ -77,8 +82,11 @@ export async function loginAction(
   _prev: AuthState | undefined,
   formData: FormData,
 ): Promise<AuthState> {
+  const usernameRaw = formData.get("username")
+  const values = { username: typeof usernameRaw === "string" ? usernameRaw : "" }
+
   const parsed = loginSchema.safeParse({
-    username: formData.get("username"),
+    username: usernameRaw,
     password: formData.get("password"),
   })
   if (!parsed.success) {
@@ -89,7 +97,7 @@ export async function loginAction(
         fieldErrors[path] = issue.message
       }
     }
-    return { fieldErrors }
+    return { fieldErrors, values }
   }
 
   const supabase = await createClient()
@@ -97,7 +105,7 @@ export async function loginAction(
     email: usernameToEmail(parsed.data.username),
     password: parsed.data.password,
   })
-  if (error) return { error: "Nieprawidłowy login lub hasło" }
+  if (error) return { error: "Nieprawidłowy login lub hasło", values }
 
   revalidatePath("/", "layout")
   redirect("/")

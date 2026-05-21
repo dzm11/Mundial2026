@@ -1,12 +1,7 @@
 import { z } from "zod"
 
-// Hasło: min. 8 znaków, ≥1 wielka, ≥1 cyfra, ≥1 znak specjalny
-export const passwordSchema = z
-  .string()
-  .min(8, "Hasło musi mieć minimum 8 znaków")
-  .regex(/[A-Z]/, "Hasło musi zawierać przynajmniej jedną wielką literę")
-  .regex(/\d/, "Hasło musi zawierać przynajmniej jedną cyfrę")
-  .regex(/[^A-Za-z0-9]/, "Hasło musi zawierać przynajmniej jeden znak specjalny")
+// Hasło: min. 8 znaków
+export const passwordSchema = z.string().min(8, "Hasło musi mieć minimum 8 znaków")
 
 export const usernameSchema = z
   .string()
@@ -16,8 +11,6 @@ export const usernameSchema = z
 
 export const registerSchema = z.object({
   username: usernameSchema,
-  firstName: z.string().min(1, "Podaj imię").max(40),
-  lastName: z.string().min(1, "Podaj nazwisko").max(60),
   password: passwordSchema,
 })
 

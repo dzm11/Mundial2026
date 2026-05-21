@@ -1,7 +1,6 @@
-import { Geist_Mono, Inter } from "next/font/google"
+import { Archivo, Geist_Mono, Inter } from "next/font/google"
 
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 
 export const metadata = {
@@ -9,27 +8,28 @@ export const metadata = {
   description: "Aplikacja typerska na Mistrzostwa Świata 2026.",
 }
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
-
-const fontMono = Geist_Mono({
+const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans" })
+const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" })
+const fontDisplay = Archivo({
   subsets: ["latin"],
-  variable: "--font-mono",
+  variable: "--font-display",
+  weight: ["600", "700", "800"],
 })
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="pl"
-      suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", inter.variable)}
+      className={cn(
+        "dark antialiased",
+        fontSans.variable,
+        fontMono.variable,
+        fontDisplay.variable,
+      )}
     >
-      <body>
-        <ThemeProvider>{children}</ThemeProvider>
-      </body>
+      <body>{children}</body>
     </html>
   )
 }

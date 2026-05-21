@@ -5,6 +5,15 @@ import { createClient } from "@/lib/supabase/server"
 import { logoutAction } from "../(auth)/actions"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Toaster } from "@/components/ui/sonner"
+import { BottomNav } from "@/components/bottom-nav"
 import { Settings, LogOut } from "lucide-react"
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -16,50 +25,85 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username, first_name, last_name, avatar_url")
+    .select("username, avatar_url")
     .eq("id", user.id)
     .single()
 
-  const initials = profile
-    ? `${profile.first_name[0] ?? ""}${profile.last_name[0] ?? ""}`.toUpperCase()
-    : "?"
+  const initials = profile?.username ? profile.username.slice(0, 2).toUpperCase() : "?"
 
   return (
     <div className="min-h-svh bg-background">
       <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30 border-b backdrop-blur">
         <div className="container mx-auto flex h-14 items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold tracking-tight">
-            Meczyki <span className="text-primary">·</span> WC 2026
+          <Link
+            href="/"
+            className="font-display font-extrabold tracking-tight text-xl"
+          >
+            Meczyki <span className="text-primary text-sm font-sans font-semibold">· WC 2026</span>
           </Link>
-          <nav className="flex items-center gap-2">
-            <Link href="/settings" className="hidden sm:block">
+
+          {/* Desktop nav links */}
+          <nav className="hidden lg:flex items-center gap-1">
+            <Link href="/">
               <Button variant="ghost" size="sm">
-                <Settings className="mr-2 size-4" />
-                Ustawienia
+                Mecze
               </Button>
             </Link>
-            <Link href="/settings" className="sm:hidden">
-              <Button variant="ghost" size="icon" aria-label="Ustawienia">
-                <Settings className="size-4" />
+            <Link href="/ranking">
+              <Button variant="ghost" size="sm">
+                Ranking
               </Button>
             </Link>
-            <form action={logoutAction}>
-              <Button variant="ghost" size="icon" type="submit" aria-label="Wyloguj">
-                <LogOut className="size-4" />
+            <Link href="/siatka">
+              <Button variant="ghost" size="sm">
+                Siatka
               </Button>
-            </form>
-            <Link href="/settings" className="ml-1">
-              <Avatar className="size-8">
-                {profile?.avatar_url && (
-                  <AvatarImage src={profile.avatar_url} alt={profile.username} />
-                )}
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
             </Link>
           </nav>
+
+          {/* Avatar dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                aria-label="Menu użytkownika"
+              >
+                <Avatar className="size-8">
+                  {profile?.avatar_url && (
+                    <AvatarImage src={profile.avatar_url} alt={profile.username ?? ""} />
+                  )}
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild>
+                <Link href="/settings" className="flex items-center gap-2">
+                  <Settings className="size-4" />
+                  Ustawienia
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <form action={logoutAction} className="w-full">
+                  <button
+                    type="submit"
+                    className="flex w-full items-center gap-2 text-left"
+                  >
+                    <LogOut className="size-4" />
+                    Wyloguj
+                  </button>
+                </form>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
-      <main className="container mx-auto px-2 py-6 sm:px-4">{children}</main>
+
+      <main className="container mx-auto px-4 py-6 pb-24 lg:pb-6">{children}</main>
+
+      <BottomNav />
+      <Toaster />
     </div>
   )
 }

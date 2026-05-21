@@ -1,8 +1,7 @@
-import { getMatches, getLeaderboard, getPredictions, sortPlayers } from "@/lib/data"
-import { LeaderboardTable } from "@/components/leaderboard-table"
-import { MobileMatchList } from "@/components/mobile-match-list"
-import { EmptyState } from "@/components/empty-state"
 import { createClient } from "@/lib/supabase/server"
+import { getMatches, getLeaderboard, getPredictions, sortPlayers } from "@/lib/data"
+import { MatchesBoard } from "@/components/matches-board"
+import { EmptyState } from "@/components/empty-state"
 
 export const dynamic = "force-dynamic"
 
@@ -18,28 +17,34 @@ export default async function HomePage() {
     getLeaderboard(),
     getPredictions(),
   ])
-  const sortedPlayers = sortPlayers(players)
 
   if (matches.length === 0) return <EmptyState />
 
+  // Pasek "Twoja kolej": liczba nadchodzących meczów bez typu bieżącego gracza.
+  const nowDate = new Date()
+  const ownPredMatchIds = new Set(
+    predictions.filter((p) => p.user_id === user.id).map((p) => p.match_id),
+  )
+  const todoCount = matches.filter(
+    (m) => new Date(m.kickoff_at) > nowDate && !ownPredMatchIds.has(m.id),
+  ).length
+
   return (
-    <>
-      <div className="hidden lg:block">
-        <LeaderboardTable
-          matches={matches}
-          players={sortedPlayers}
-          predictions={predictions}
-          currentUserId={user.id}
-        />
-      </div>
-      <div className="lg:hidden">
-        <MobileMatchList
-          matches={matches}
-          players={sortedPlayers}
-          predictions={predictions}
-          currentUserId={user.id}
-        />
-      </div>
-    </>
+    <div className="space-y-5">
+      <header className="space-y-1">
+        <h1 className="font-display text-2xl font-extrabold tracking-tight">Mecze</h1>
+        <p className="text-muted-foreground text-sm">
+          {todoCount > 0
+            ? `${todoCount} ${todoCount === 1 ? "mecz bez typu" : "meczów bez typu"} — Twoja kolej.`
+            : "Wszystkie nadchodzące mecze obstawione."}
+        </p>
+      </header>
+      <MatchesBoard
+        matches={matches}
+        players={sortPlayers(players)}
+        predictions={predictions}
+        currentUserId={user.id}
+      />
+    </div>
   )
 }

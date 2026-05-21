@@ -13,39 +13,36 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username, first_name, last_name, avatar_url")
+    .select("username, avatar_url")
     .eq("id", user.id)
     .single()
 
-  const initials = profile
-    ? `${profile.first_name[0] ?? ""}${profile.last_name[0] ?? ""}`.toUpperCase()
-    : "?"
+  const initials = profile?.username ? profile.username.slice(0, 2).toUpperCase() : "?"
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold">Ustawienia</h1>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight">Ustawienia</h1>
 
       <Card>
         <CardHeader>
-          <CardTitle>Profil</CardTitle>
+          <CardTitle className="font-display font-bold tracking-tight">Profil</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <Avatar className="size-16">
             {profile?.avatar_url && <AvatarImage src={profile.avatar_url} />}
-            <AvatarFallback className="text-lg">{initials}</AvatarFallback>
+            <AvatarFallback className="text-lg font-display font-bold">
+              {initials}
+            </AvatarFallback>
           </Avatar>
           <div>
-            <div className="font-medium">
-              {profile?.first_name} {profile?.last_name}
-            </div>
-            <div className="text-muted-foreground text-sm">@{profile?.username}</div>
+            <div className="font-medium text-foreground">@{profile?.username}</div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Avatar</CardTitle>
+          <CardTitle className="font-display font-bold tracking-tight">Avatar</CardTitle>
         </CardHeader>
         <CardContent>
           <AvatarForm />
@@ -54,7 +51,7 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Zmiana hasła</CardTitle>
+          <CardTitle className="font-display font-bold tracking-tight">Zmiana hasła</CardTitle>
         </CardHeader>
         <CardContent>
           <PasswordForm />

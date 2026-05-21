@@ -31,8 +31,8 @@ export function AvatarForm() {
         />
       </div>
       {state?.error && <p className="text-destructive text-sm">{state.error}</p>}
-      {state?.ok && <p className="text-sm text-green-600">Avatar zaktualizowany.</p>}
-      <Button type="submit" disabled={pending}>
+      {state?.ok && <p className="text-success text-sm">Avatar zaktualizowany.</p>}
+      <Button type="submit" disabled={pending} className="font-display font-semibold">
         {pending ? "Wgrywam…" : "Wgraj avatar"}
       </Button>
     </form>
@@ -56,13 +56,11 @@ export function PasswordForm() {
           autoComplete="new-password"
           required
         />
-        <p className="text-muted-foreground text-xs">
-          Min. 8 znaków, 1 wielka litera, 1 cyfra, 1 znak specjalny.
-        </p>
+        <p className="text-muted-foreground text-xs">Minimum 8 znaków.</p>
       </div>
       {state?.error && <p className="text-destructive text-sm">{state.error}</p>}
-      {state?.ok && <p className="text-sm text-green-600">Hasło zmienione.</p>}
-      <Button type="submit" disabled={pending}>
+      {state?.ok && <p className="text-success text-sm">Hasło zmienione.</p>}
+      <Button type="submit" disabled={pending} className="font-display font-semibold">
         {pending ? "Zapisuję…" : "Zmień hasło"}
       </Button>
     </form>

@@ -16,7 +16,13 @@ export function LoginForm() {
     <form action={action} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="username">Login</Label>
-        <Input id="username" name="username" autoComplete="username" required />
+        <Input
+          id="username"
+          name="username"
+          autoComplete="username"
+          defaultValue={state?.values?.username ?? ""}
+          required
+        />
         {state?.fieldErrors?.username && (
           <p className="text-destructive text-sm">{state.fieldErrors.username}</p>
         )}
@@ -35,7 +41,7 @@ export function LoginForm() {
         )}
       </div>
       {state?.error && <p className="text-destructive text-sm">{state.error}</p>}
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" className="w-full font-display font-bold" disabled={pending}>
         {pending ? "Logowanie…" : "Zaloguj"}
       </Button>
     </form>

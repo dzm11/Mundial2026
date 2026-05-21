@@ -1,22 +1,39 @@
 import Link from "next/link"
 import { RegisterForm } from "./form"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 
 export default function RegisterPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Załóż konto</CardTitle>
+        <CardTitle className="text-xl font-display font-bold">
+          Załóż konto
+        </CardTitle>
+        <CardDescription>
+          Dołącz do typowania — Mistrzostwa Świata 2026
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <RegisterForm />
-        <p className="text-muted-foreground mt-4 text-sm text-center">
+      </CardContent>
+      <CardFooter className="justify-center">
+        <p className="text-muted-foreground text-sm">
           Masz już konto?{" "}
-          <Link href="/login" className="text-primary underline">
+          <Link
+            href="/login"
+            className="text-primary underline underline-offset-4 hover:text-primary/80 transition-colors"
+          >
             Zaloguj się
           </Link>
         </p>
-      </CardContent>
+      </CardFooter>
     </Card>
   )
 }

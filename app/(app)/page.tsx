@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { getMatches, getLeaderboard, getPredictions, sortPlayers } from "@/lib/data"
 import { MatchesBoard } from "@/components/matches-board"
 import { EmptyState } from "@/components/empty-state"
+import { DemoPanel } from "@/components/demo-panel"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const dynamic = "force-dynamic"
 
@@ -18,8 +20,6 @@ export default async function HomePage() {
     getPredictions(),
   ])
 
-  if (matches.length === 0) return <EmptyState />
-
   // Pasek "Twoja kolej": liczba nadchodzących meczów bez typu bieżącego gracza.
   const nowDate = new Date()
   const ownPredMatchIds = new Set(
@@ -34,17 +34,33 @@ export default async function HomePage() {
       <header className="space-y-1">
         <h1 className="font-display text-2xl font-extrabold tracking-tight">Mecze</h1>
         <p className="text-muted-foreground text-sm">
-          {todoCount > 0
-            ? `${todoCount} ${todoCount === 1 ? "mecz bez typu" : "meczów bez typu"} — Twoja kolej.`
-            : "Wszystkie nadchodzące mecze obstawione."}
+          {matches.length === 0
+            ? "Brak meczów — dodaj mecz demo, żeby przetestować."
+            : todoCount > 0
+              ? `${todoCount} ${todoCount === 1 ? "mecz bez typu" : "meczów bez typu"} — Twoja kolej.`
+              : "Wszystkie nadchodzące mecze obstawione."}
         </p>
       </header>
-      <MatchesBoard
-        matches={matches}
-        players={sortPlayers(players)}
-        predictions={predictions}
-        currentUserId={user.id}
-      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display font-bold tracking-tight">Tryb demo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DemoPanel />
+        </CardContent>
+      </Card>
+
+      {matches.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <MatchesBoard
+          matches={matches}
+          players={sortPlayers(players)}
+          predictions={predictions}
+          currentUserId={user.id}
+        />
+      )}
     </div>
   )
 }

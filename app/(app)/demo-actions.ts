@@ -6,8 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 
 export type DemoResult = { ok: boolean; error?: string }
 
-const DEMO_KICKOFF_DELAY_MS = 2 * 60 * 1000 // kick-off za 2 minuty
-const DEMO_DURATION_MS = 3 * 60 * 1000 // mecz trwa 3 minuty
+const DEMO_KICKOFF_DELAY_MS = 3 * 60 * 1000 // kick-off za 3 minuty
+const DEMO_DURATION_MS = 1 * 60 * 1000 // mecz trwa 1 minutę
 
 function revalidateViews() {
   revalidatePath("/")

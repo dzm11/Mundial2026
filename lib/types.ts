@@ -17,6 +17,7 @@ export type Match = {
   status: string
   result1: number | null
   result2: number | null
+  is_demo: boolean
 }
 
 export type MatchWithTeams = Match & {

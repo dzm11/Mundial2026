@@ -19,7 +19,9 @@ const subscribeNow = (cb: () => void) => {
   return () => clearInterval(id)
 }
 const getNowBucket = () => Math.floor(Date.now() / 30_000) * 30_000
-const getServerNow = () => 0
+// SSR snapshot: bieżący bucket czasu (nie 0) — inaczej filtr "Nadchodzące"
+// przepuszcza na serwerze wszystkie mecze, a klient po hydratacji je odfiltrowuje.
+const getServerNow = () => Math.floor(Date.now() / 30_000) * 30_000
 
 function useNowTick(): number {
   return useSyncExternalStore(subscribeNow, getNowBucket, getServerNow)

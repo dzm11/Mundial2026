@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
 
 const MATCH_SELECT =
-  "id, external_id, stage, group_letter, team1_id, team2_id, kickoff_at, status, result1, result2, " +
+  "id, external_id, stage, group_letter, team1_id, team2_id, kickoff_at, status, result1, result2, is_demo, " +
   "team1:team1_id(id,name,iso_code,fifa_code,group_letter), " +
   "team2:team2_id(id,name,iso_code,fifa_code,group_letter)"
 

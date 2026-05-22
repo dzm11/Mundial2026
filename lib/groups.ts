@@ -45,7 +45,10 @@ export function shortStage(stage: string, groupLetter: string | null): string {
 
 // Czy mecz należy do wybranej fazy. "Finał" zawiera też mecz o 3. miejsce.
 // "upcoming" = mecz jeszcze się nie rozpoczął.
+// Mecze demo są zawsze widoczne (w każdej zakładce) — żeby nie znikały z
+// widoku po kick-offie i można było obserwować cały ich przebieg.
 export function matchInPhase(match: MatchWithTeams, phase: PhaseKey, now: number): boolean {
+  if (match.is_demo) return true
   if (phase === "upcoming") return new Date(match.kickoff_at).getTime() > now
   if (phase === "F") return match.stage === "F" || match.stage === "3RD"
   return match.stage === phase

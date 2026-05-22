@@ -2,6 +2,7 @@ import { Archivo, Geist_Mono, Inter } from "next/font/google"
 
 import "./globals.css"
 import { cn } from "@/lib/utils"
+import { AgentationDev } from "@/components/agentation-dev"
 
 export const metadata = {
   title: "Meczyki — Mundial 2026",
@@ -29,7 +30,10 @@ export default function RootLayout({
         fontDisplay.variable,
       )}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <AgentationDev />
+      </body>
     </html>
   )
 }

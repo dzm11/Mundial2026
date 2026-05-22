@@ -89,4 +89,9 @@ describe("matchClock — prawdziwy mecz", () => {
     expect(c.phase).toBe("scheduled")
     if (c.phase === "scheduled") expect(c.msToKickoff).toBe(600_000)
   })
+
+  it("TIMED → scheduled (status spoza IN_PLAY/PAUSED/FINISHED)", () => {
+    const timed = match({ status: "TIMED", kickoff_at: new Date(NOW + 60_000).toISOString() })
+    expect(matchClock(timed, NOW).phase).toBe("scheduled")
+  })
 })

@@ -12,7 +12,7 @@ export function DemoPanel() {
     startTransition(async () => {
       const result = await createDemoMatch()
       if (result.ok) {
-        toast.success("Mecz demo dodany — kick-off za 3 minuty.")
+        toast.success("Mecz demo dodany — kick-off za 15 s.")
       } else {
         toast.error(result.error ?? "Nie udało się dodać meczu demo")
       }
@@ -33,11 +33,11 @@ export function DemoPanel() {
   return (
     <div className="space-y-3">
       <p className="text-muted-foreground text-sm">
-        Tworzy mecz testowy z kick-offem za 3 minuty, trwający 1 minutę.
-        Wpisz na niego typ poniżej i kliknij „Zatwierdź typy” — punkty
-        naliczają się tylko dla zatwierdzonych typów. Po kick-offie wiersz
-        typu się zablokuje, a po zakończeniu meczu zobaczysz naliczone
-        punkty w Rankingu.
+        Tworzy mecz testowy: kick-off 15 s po kliknięciu, dwie połowy po
+        15 s z 5-sekundową przerwą. Wpisz na niego typ poniżej i kliknij
+        „Zatwierdź typy” — punkty naliczają się tylko dla zatwierdzonych
+        typów. Po kick-offie wiersz typu się zablokuje; obserwuj
+        odliczanie, minutę meczu, przerwę i drugą połowę.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button

@@ -19,6 +19,7 @@ function match(overrides: Partial<MatchWithTeams>): MatchWithTeams {
     status: "SCHEDULED",
     result1: null,
     result2: null,
+    minute: null,
     is_demo: false,
     team1: null,
     team2: null,

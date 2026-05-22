@@ -15,6 +15,7 @@ type FdMatch = {
   score: {
     fullTime: { home: number | null; away: number | null }
   }
+  minute: number | null
 }
 
 type FdResponse = { matches: FdMatch[] }
@@ -119,6 +120,7 @@ export async function GET(req: Request) {
         status: fullStatus,
         result1: r1,
         result2: r2,
+        minute: m.minute ?? null,
         stage,
         updated_at: new Date().toISOString(),
       })

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Toaster } from "@/components/ui/sonner"
 import { BottomNav } from "@/components/bottom-nav"
+import { AutoRefresh } from "@/components/auto-refresh"
 import { Settings, LogOut } from "lucide-react"
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -104,6 +105,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       <BottomNav />
       <Toaster />
+      <AutoRefresh />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition, useSyncExternalStore } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -9,23 +9,6 @@ import { PhaseFilter } from "@/components/phase-filter"
 import { confirmAllPredictions } from "@/app/(app)/actions"
 import { matchInPhase, type PhaseKey } from "@/lib/groups"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
-
-// ---------------------------------------------------------------------------
-// Stable module-scope refs for useNowTick — must never change between renders.
-// ---------------------------------------------------------------------------
-
-const subscribeNow = (cb: () => void) => {
-  const id = setInterval(cb, 30_000)
-  return () => clearInterval(id)
-}
-const getNowBucket = () => Math.floor(Date.now() / 30_000) * 30_000
-// SSR snapshot: bieżący bucket czasu (nie 0) — inaczej filtr "Nadchodzące"
-// przepuszcza na serwerze wszystkie mecze, a klient po hydratacji je odfiltrowuje.
-const getServerNow = () => Math.floor(Date.now() / 30_000) * 30_000
-
-function useNowTick(): number {
-  return useSyncExternalStore(subscribeNow, getNowBucket, getServerNow)
-}
 
 // ---------------------------------------------------------------------------
 // Day grouping helpers (local timezone)
@@ -54,6 +37,9 @@ export type MatchesBoardProps = {
   players: Player[]
   predictions: PredictionRow[]
   currentUserId: string
+  // Znacznik czasu policzony na serwerze i przekazany propsem — ten sam na
+  // serwerze i przy hydratacji, więc nie powoduje rozjazdu hydratacji.
+  serverNow: number
 }
 
 // ---------------------------------------------------------------------------
@@ -65,11 +51,18 @@ export function MatchesBoard({
   players,
   predictions,
   currentUserId,
+  serverNow,
 }: MatchesBoardProps) {
   const [phase, setPhase] = useState<PhaseKey>("upcoming")
   const [isPending, startTransition] = useTransition()
 
-  const now = useNowTick()
+  // `now` startuje od serverNow (prop — identyczny na serwerze i przy
+  // hydratacji), po zamontowaniu odświeża się co 30 s realnym czasem.
+  const [now, setNow] = useState(serverNow)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   // matchId → userId → PredictionRow
   const predMap = useMemo(() => {

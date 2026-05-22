@@ -22,6 +22,7 @@ export default async function HomePage() {
 
   // Pasek "Twoja kolej": liczba nadchodzących meczów bez typu bieżącego gracza.
   const nowDate = new Date()
+  const serverNow = nowDate.getTime()
   const ownPredMatchIds = new Set(
     predictions.filter((p) => p.user_id === user.id).map((p) => p.match_id),
   )
@@ -59,6 +60,7 @@ export default async function HomePage() {
           players={sortPlayers(players)}
           predictions={predictions}
           currentUserId={user.id}
+          serverNow={serverNow}
         />
       )}
     </div>

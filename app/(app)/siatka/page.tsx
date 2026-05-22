@@ -20,6 +20,8 @@ export default async function SiatkaPage() {
 
   if (matches.length === 0) return <EmptyState />
 
+  const serverNow = new Date().getTime()
+
   return (
     <div className="space-y-5">
       <header className="space-y-1">
@@ -33,6 +35,7 @@ export default async function SiatkaPage() {
         players={sortPlayers(players)}
         predictions={predictions}
         currentUserId={user.id}
+        serverNow={serverNow}
       />
     </div>
   )

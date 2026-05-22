@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useSyncExternalStore, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +28,9 @@ type Props = {
   players: Player[]
   predictions: PredictionRow[]
   currentUserId: string
+  // Znacznik czasu z serwera (prop) — identyczny na serwerze i przy
+  // hydratacji, eliminuje rozjazd hydratacji.
+  serverNow: number
 }
 
 type GroupedSection = {
@@ -59,20 +62,6 @@ function dayLabel(iso: string): string {
   })
 }
 
-// ── Module-scope stable references for useSyncExternalStore ───────────────────
-
-const subscribeNow = (cb: () => void) => {
-  const id = setInterval(cb, 30_000)
-  return () => clearInterval(id)
-}
-const getNowBucket = () => Math.floor(Date.now() / 30_000) * 30_000
-// SSR snapshot: bieżący bucket czasu (nie 0) — inaczej filtr "Nadchodzące"
-// przepuszcza na serwerze wszystkie mecze, a klient po hydratacji je odfiltrowuje.
-const getServerNow = () => Math.floor(Date.now() / 30_000) * 30_000
-
-function useNowTick(): number {
-  return useSyncExternalStore(subscribeNow, getNowBucket, getServerNow)
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -230,10 +219,18 @@ export function PredictionsMatrix({
   players,
   predictions,
   currentUserId,
+  serverNow,
 }: Props) {
   const [phase, setPhase] = useState<PhaseKey>("upcoming")
   const [pending, startTransition] = useTransition()
-  const now = useNowTick()
+
+  // `now` startuje od serverNow (prop — identyczny na serwerze i przy
+  // hydratacji), po zamontowaniu odświeża się co 30 s realnym czasem.
+  const [now, setNow] = useState(serverNow)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   // Build predMap: matchId → userId → PredictionRow
   const predMap = useMemo(() => {

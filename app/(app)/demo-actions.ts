@@ -61,6 +61,17 @@ export async function settleDemoMatches(): Promise<DemoResult> {
   if (error) return { ok: false, error: error.message }
   if (!matches || matches.length === 0) return { ok: true }
 
+  // Auto-potwierdzanie typów na meczach demo: kick-off 15 s nie daje
+  // czasu na ręczne „Zatwierdź typy" przed lockiem RLS. Bez confirmed_at
+  // widok prediction_points zwraca 0, więc punkty nie wpadałyby do
+  // rankingu. Prawdziwych meczów to nie dotyczy.
+  const demoMatchIds = matches.map((m) => m.id)
+  await admin
+    .from("predictions")
+    .update({ confirmed_at: new Date().toISOString() })
+    .in("match_id", demoMatchIds)
+    .is("confirmed_at", null)
+
   const now = Date.now()
   let didUpdate = false
 

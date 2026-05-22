@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AvatarForm, PasswordForm } from "./forms"
+import { DemoPanel } from "@/components/demo-panel"
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -55,6 +56,15 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <PasswordForm />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display font-bold tracking-tight">Tryb demo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DemoPanel />
         </CardContent>
       </Card>
     </div>

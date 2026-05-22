@@ -3,11 +3,9 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { DEMO_KICKOFF_DELAY_MS, DEMO_HALF1_MS, DEMO_BREAK_MS, DEMO_HALF2_MS } from "@/lib/match-clock"
 
 export type DemoResult = { ok: boolean; error?: string }
-
-const DEMO_KICKOFF_DELAY_MS = 3 * 60 * 1000 // kick-off za 3 minuty
-const DEMO_DURATION_MS = 1 * 60 * 1000 // mecz trwa 1 minutę
 
 function revalidateViews() {
   revalidatePath("/")
@@ -15,7 +13,7 @@ function revalidateViews() {
   revalidatePath("/ranking")
 }
 
-// Tworzy jeden mecz demo: kick-off za 2 min, status SCHEDULED, dwie losowe drużyny.
+// Tworzy jeden mecz demo: kick-off za 15 s, status SCHEDULED, dwie losowe drużyny.
 export async function createDemoMatch(): Promise<DemoResult> {
   const supabase = await createClient()
   const {
@@ -66,11 +64,23 @@ export async function settleDemoMatches(): Promise<DemoResult> {
   const now = Date.now()
   let didUpdate = false
 
+  const HALF1_END = DEMO_HALF1_MS
+  const BREAK_END = DEMO_HALF1_MS + DEMO_BREAK_MS
+  const MATCH_END = DEMO_HALF1_MS + DEMO_BREAK_MS + DEMO_HALF2_MS
+
   for (const m of matches) {
     const kickoffMs = new Date(m.kickoff_at as string).getTime()
-    if (now < kickoffMs) continue // jeszcze przed kick-offem
+    if (now < kickoffMs) continue // przed kick-offem — SCHEDULED, nic nie robimy
+    const elapsed = now - kickoffMs
 
-    // Wynik ustawiamy raz, przy pierwszym przejściu w grę.
+    // Docelowy status z osi czasu demo.
+    let targetStatus: "IN_PLAY" | "PAUSED" | "FINISHED"
+    if (elapsed < HALF1_END) targetStatus = "IN_PLAY"
+    else if (elapsed < BREAK_END) targetStatus = "PAUSED"
+    else if (elapsed < MATCH_END) targetStatus = "IN_PLAY"
+    else targetStatus = "FINISHED"
+
+    // Wynik ustawiamy raz, przy pierwszym wejściu w grę.
     let result1 = m.result1 as number | null
     let result2 = m.result2 as number | null
     if (result1 == null || result2 == null) {
@@ -78,11 +88,14 @@ export async function settleDemoMatches(): Promise<DemoResult> {
       result2 = Math.floor(Math.random() * 5)
     }
 
-    const finished = now >= kickoffMs + DEMO_DURATION_MS
+    if (m.status === targetStatus && m.result1 != null && m.result2 != null) {
+      continue // nic się nie zmienia
+    }
+
     const { error: updErr } = await admin
       .from("matches")
       .update({
-        status: finished ? "FINISHED" : "IN_PLAY",
+        status: targetStatus,
         result1,
         result2,
         updated_at: new Date().toISOString(),

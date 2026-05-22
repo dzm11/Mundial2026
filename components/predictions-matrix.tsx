@@ -19,6 +19,7 @@ import { PredictionCell } from "@/components/prediction-cell"
 import { confirmAllPredictions } from "@/app/(app)/actions"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
 import { matchInPhase, shortStage, type PhaseKey } from "@/lib/groups"
+import { matchClock } from "@/lib/match-clock"
 import { cn } from "@/lib/utils"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -145,14 +146,27 @@ function SectionBlock({
                 <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
                   {shortStage(match.stage, match.group_letter)}
                 </span>
-                {match.status === "IN_PLAY" && (
-                  <Badge variant="destructive" className="animate-pulse w-fit text-[10px]">
-                    LIVE
-                  </Badge>
-                )}
-                {match.status === "FINISHED" && (
-                  <span className="text-success text-[10px]">FT</span>
-                )}
+                {(() => {
+                  const clock = matchClock(match, now)
+                  if (clock.phase === "live") {
+                    return (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-500">
+                        <span className="relative flex size-1.5">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                          <span className="relative inline-flex size-1.5 rounded-full bg-green-500" />
+                        </span>
+                        <span className="font-mono tabular-nums">{clock.minute}&apos;</span>
+                      </span>
+                    )
+                  }
+                  if (clock.phase === "halftime") {
+                    return <span className="text-[10px] font-semibold text-muted-foreground">Przerwa</span>
+                  }
+                  if (clock.phase === "finished") {
+                    return <span className="text-success text-[10px]">FT</span>
+                  }
+                  return null
+                })()}
               </div>
             </TableCell>
 

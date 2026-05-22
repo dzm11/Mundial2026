@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Users } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
 import { shortStage } from "@/lib/groups"
 import { calculatePoints } from "@/lib/scoring"
+import { matchClock } from "@/lib/match-clock"
 
 import { Flag } from "@/components/flag"
 import { PredictionCell } from "@/components/prediction-cell"
@@ -46,6 +47,26 @@ function formatKickoff(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function isToday(iso: string, now: number): boolean {
+  const d = new Date(iso)
+  const n = new Date(now)
+  return (
+    d.getFullYear() === n.getFullYear() &&
+    d.getMonth() === n.getMonth() &&
+    d.getDate() === n.getDate()
+  )
+}
+
+function formatCountdown(ms: number): string {
+  const totalSec = Math.ceil(ms / 1000)
+  if (totalSec < 60) return `za ${totalSec} s`
+  const totalMin = Math.ceil(ms / 60_000)
+  if (totalMin < 60) return `za ${totalMin} min`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `za ${h} godz ${m} min` : `za ${h} godz`
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +205,18 @@ export function MatchCard({
 }: MatchCardProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
 
-  const matchStarted = new Date(match.kickoff_at).getTime() <= now
+  // Mecz demo: własny tick 1 s (fazy demo są krótkie). Prawdziwy mecz:
+  // prop `now` (tick 30 s). useState zainicjowane propsem — brak rozjazdu hydratacji.
+  const [localNow, setLocalNow] = useState(now)
+  useEffect(() => {
+    if (!match.is_demo) return
+    const id = setInterval(() => setLocalNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [match.is_demo])
+  const effectiveNow = match.is_demo ? localNow : now
+  const clock = matchClock(match, effectiveNow)
+
+  const matchStarted = new Date(match.kickoff_at).getTime() <= effectiveNow
   const isLive =
     match.status === "IN_PLAY" || match.status === "PAUSED"
   const isFinished = match.status === "FINISHED"
@@ -225,21 +257,30 @@ export function MatchCard({
           </span>
         </div>
 
-        {/* Status badge */}
+        {/* Status badge — driven by clock */}
         <div className="shrink-0">
-          {isLive && (
-            <Badge
-              variant="destructive"
-              className="animate-pulse font-heading uppercase tracking-widest text-[10px] px-2"
-            >
-              LIVE
-            </Badge>
+          {clock.phase === "live" && (
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-green-500">
+              <span className="relative flex size-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-green-500" />
+              </span>
+              <span className="font-mono tabular-nums">{clock.minute}&apos;</span>
+            </span>
           )}
-          {isFinished && (
-            <Badge variant="secondary" className="font-heading uppercase tracking-wide text-[10px] px-2">
-              FT
-            </Badge>
+          {clock.phase === "halftime" && (
+            <Badge variant="secondary">Przerwa</Badge>
           )}
+          {clock.phase === "finished" && (
+            <Badge variant="secondary">FT</Badge>
+          )}
+          {clock.phase === "scheduled" &&
+            isToday(match.kickoff_at, effectiveNow) &&
+            clock.msToKickoff > 0 && (
+              <span className="text-xs font-medium text-muted-foreground">
+                {formatCountdown(clock.msToKickoff)}
+              </span>
+            )}
         </div>
       </div>
 

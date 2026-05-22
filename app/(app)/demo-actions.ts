@@ -64,9 +64,9 @@ export async function settleDemoMatches(): Promise<DemoResult> {
   if (!matches || matches.length === 0) return { ok: true }
 
   const now = Date.now()
+  let didUpdate = false
 
   for (const m of matches) {
-    if (m.status === "FINISHED") continue
     const kickoffMs = new Date(m.kickoff_at as string).getTime()
     if (now < kickoffMs) continue // jeszcze przed kick-offem
 
@@ -89,9 +89,10 @@ export async function settleDemoMatches(): Promise<DemoResult> {
       })
       .eq("id", m.id)
     if (updErr) return { ok: false, error: updErr.message }
+    didUpdate = true
   }
 
-  revalidateViews()
+  if (didUpdate) revalidateViews()
   return { ok: true }
 }
 

@@ -35,7 +35,7 @@ export function DemoPanel() {
       <p className="text-muted-foreground text-sm">
         Tworzy mecz testowy z kick-offem za 2 minuty, kończący się 3 minuty
         później. Wpisz na niego typ w zakładce Mecze i kliknij „Zatwierdź
-        typy&rdquo; — punkty naliczają się tylko dla zatwierdzonych typów. Po
+        typy” — punkty naliczają się tylko dla zatwierdzonych typów. Po
         kick-offie wiersz typu się zablokuje, a po zakończeniu meczu
         zobaczysz naliczone punkty w Rankingu.
       </p>

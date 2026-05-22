@@ -7,7 +7,7 @@ import { settleDemoMatches } from "@/app/(app)/demo-actions"
 const REFRESH_INTERVAL_MS = 30_000
 
 // Niewidoczny komponent: co ~30 s przesuwa statusy meczów demo w czasie
-// i odświeża stronę, żeby mecz „działł się sam". Przydaje się też jako
+// i odświeża stronę, żeby mecz „działał się sam". Przydaje się też jako
 // odświeżanie wyników na żywo podczas Mundialu.
 export function AutoRefresh() {
   const router = useRouter()

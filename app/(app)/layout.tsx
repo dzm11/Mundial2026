@@ -15,7 +15,7 @@ import {
 import { Toaster } from "@/components/ui/sonner"
 import { BottomNav } from "@/components/bottom-nav"
 import { AutoRefresh } from "@/components/auto-refresh"
-import { Settings, LogOut } from "lucide-react"
+import { Settings, LogOut, FileText } from "lucide-react"
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
@@ -60,6 +60,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 Siatka
               </Button>
             </Link>
+            <Link href="/regulamin">
+              <Button variant="ghost" size="sm">
+                Regulamin
+              </Button>
+            </Link>
           </nav>
 
           {/* Avatar dropdown */}
@@ -82,6 +87,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 <Link href="/settings" className="flex items-center gap-2">
                   <Settings className="size-4" />
                   Ustawienia
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/regulamin" className="flex items-center gap-2">
+                  <FileText className="size-4" />
+                  Regulamin
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

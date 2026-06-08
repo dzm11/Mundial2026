@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import type { Player } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { cn, displayName, getInitials } from "@/lib/utils"
 
 type Props = {
   players: Player[]
@@ -11,12 +11,6 @@ type PodiumSlot = {
   player: Player
   place: 1 | 2 | 3
   order: number // visual left-to-right order
-}
-
-function getInitials(player: Player): string {
-  const first = player.first_name?.[0] ?? ""
-  const last = player.last_name?.[0] ?? ""
-  return (first + last).toUpperCase() || player.username.slice(0, 2).toUpperCase()
 }
 
 const PLACE_LABEL: Record<1 | 2 | 3, string> = { 1: "I", 2: "II", 3: "III" }
@@ -122,9 +116,9 @@ function PodiumSpot({
           "truncate w-full text-center leading-tight",
           isCurrentUser ? "text-primary" : "text-card-foreground",
         )}
-        title={player.username}
+        title={`@${player.username}`}
       >
-        {player.username}
+        {displayName(player)}
       </p>
 
       {/* Points */}

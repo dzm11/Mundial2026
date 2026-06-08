@@ -20,7 +20,7 @@ import { confirmAllPredictions } from "@/app/(app)/actions"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
 import { matchInPhase, shortStage, type PhaseKey } from "@/lib/groups"
 import { matchClock } from "@/lib/match-clock"
-import { cn } from "@/lib/utils"
+import { cn, displayName } from "@/lib/utils"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -246,6 +246,18 @@ export function PredictionsMatrix({
     return () => clearInterval(id)
   }, [])
 
+  // Twoja kolumna jako pierwsza (zaraz po meczu) — lepszy UX.
+  // Reszta zachowuje kolejność rankingową (`players` przychodzi posortowane).
+  const orderedPlayers = useMemo(() => {
+    const me = players.find((p) => p.id === currentUserId)
+    if (!me) return players
+    return [me, ...players.filter((p) => p.id !== currentUserId)]
+  }, [players, currentUserId])
+
+  // Lider rankingu = pierwszy w oryginalnej (posortowanej) liście — używany
+  // do wyróżnienia odznaki, niezależnie od kolejności kolumn.
+  const leaderId = players[0]?.id
+
   // Build predMap: matchId → userId → PredictionRow
   const predMap = useMemo(() => {
     const m = new Map<number, Map<string, PredictionRow>>()
@@ -369,7 +381,7 @@ export function PredictionsMatrix({
                   </TableHead>
 
                   {/* Per-player header cells */}
-                  {players.map((p, idx) => (
+                  {orderedPlayers.map((p) => (
                     <TableHead
                       key={p.id}
                       className={cn(
@@ -386,11 +398,14 @@ export function PredictionsMatrix({
                             {p.username.slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="break-all text-xs font-normal leading-tight">
-                          {p.username}
+                        <span
+                          className="break-words text-xs font-normal leading-tight"
+                          title={`@${p.username}`}
+                        >
+                          {displayName(p)}
                         </span>
                         <Badge
-                          variant={idx === 0 ? "default" : "secondary"}
+                          variant={p.id === leaderId ? "default" : "secondary"}
                           className="font-mono"
                         >
                           {p.total_points}
@@ -407,7 +422,7 @@ export function PredictionsMatrix({
                   <SectionBlock
                     key={section.key}
                     section={section}
-                    players={players}
+                    players={orderedPlayers}
                     predMap={predMap}
                     currentUserId={currentUserId}
                     now={now}

@@ -150,7 +150,7 @@ export function PredictionCell({
   return (
     // Stała szerokość kontenera — status (icon) jest pozycjonowany absolutnie,
     // więc pojawienie się ✓/⚠ nie przesuwa wiersza tabeli.
-    <span className="relative inline-flex w-[5.5rem] items-center justify-center gap-0.5">
+    <span className="relative inline-flex w-24 items-center justify-center gap-0.5">
       <Input
         type="text"
         inputMode="numeric"
@@ -160,7 +160,7 @@ export function PredictionCell({
         onChange={(e) => onChange(0, e.target.value)}
         onBlur={() => save(v1, v2)}
         className={cn(
-          "h-9 w-11 text-center font-mono tabular-nums text-base sm:h-8 sm:w-9",
+          "h-9 w-11 px-1 text-center font-mono tabular-nums text-base sm:h-8 sm:w-10",
           confirmed && saved !== "err" && "border-primary/40",
           saved === "ok" && "border-success",
           saved === "err" && "border-destructive",
@@ -178,7 +178,7 @@ export function PredictionCell({
         onChange={(e) => onChange(1, e.target.value)}
         onBlur={() => save(v1, v2)}
         className={cn(
-          "h-9 w-11 text-center font-mono tabular-nums text-base sm:h-8 sm:w-9",
+          "h-9 w-11 px-1 text-center font-mono tabular-nums text-base sm:h-8 sm:w-10",
           confirmed && saved !== "err" && "border-primary/40",
           saved === "ok" && "border-success",
           saved === "err" && "border-destructive",

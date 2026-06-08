@@ -27,6 +27,40 @@ export function RegisterForm() {
           <p className="text-destructive text-sm">{state.fieldErrors.username}</p>
         )}
       </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">
+            Imię <span className="text-muted-foreground font-normal">(opcjonalnie)</span>
+          </Label>
+          <Input
+            id="firstName"
+            name="firstName"
+            autoComplete="given-name"
+            defaultValue={state?.values?.firstName ?? ""}
+            maxLength={40}
+            placeholder="np. Paweł"
+          />
+          {state?.fieldErrors?.firstName && (
+            <p className="text-destructive text-sm">{state.fieldErrors.firstName}</p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">
+            Nazwisko <span className="text-muted-foreground font-normal">(opcjonalnie)</span>
+          </Label>
+          <Input
+            id="lastName"
+            name="lastName"
+            autoComplete="family-name"
+            defaultValue={state?.values?.lastName ?? ""}
+            maxLength={40}
+            placeholder="np. Nowak"
+          />
+          {state?.fieldErrors?.lastName && (
+            <p className="text-destructive text-sm">{state.fieldErrors.lastName}</p>
+          )}
+        </div>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="password">Hasło</Label>
         <Input

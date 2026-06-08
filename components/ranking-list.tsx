@@ -1,17 +1,11 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import type { Player } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { cn, displayName, getInitials } from "@/lib/utils"
 
 type Props = {
   players: Player[]
   currentUserId: string
-}
-
-function getInitials(player: Player): string {
-  const first = player.first_name?.[0] ?? ""
-  const last = player.last_name?.[0] ?? ""
-  return (first + last).toUpperCase() || player.username.slice(0, 2).toUpperCase()
 }
 
 function computePlace(players: Player[], index: number): number {
@@ -121,9 +115,9 @@ export function RankingList({ players, currentUserId }: Props) {
                       "truncate text-sm font-medium leading-tight",
                       isCurrentUser ? "text-primary" : "text-card-foreground",
                     )}
-                    title={player.username}
+                    title={`@${player.username}`}
                   >
-                    {player.username}
+                    {displayName(player)}
                   </span>
 
                   {/* Mobile: inline stats */}

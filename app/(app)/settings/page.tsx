@@ -2,7 +2,8 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AvatarForm, PasswordForm } from "./forms"
+import { AvatarForm, PasswordForm, NameForm } from "./forms"
+import { displayName, getInitials } from "@/lib/utils"
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -13,11 +14,12 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username, avatar_url")
+    .select("username, first_name, last_name, avatar_url")
     .eq("id", user.id)
     .single()
 
-  const initials = profile?.username ? profile.username.slice(0, 2).toUpperCase() : "?"
+  const initials = profile ? getInitials(profile) : "?"
+  const shownName = profile ? displayName(profile) : ""
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -35,8 +37,21 @@ export default async function SettingsPage() {
             </AvatarFallback>
           </Avatar>
           <div>
-            <div className="font-medium text-foreground">@{profile?.username}</div>
+            <div className="font-medium text-foreground">{shownName}</div>
+            <div className="text-muted-foreground text-sm">@{profile?.username}</div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display font-bold tracking-tight">Nazwa wyświetlana</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NameForm
+            firstName={profile?.first_name ?? ""}
+            lastName={profile?.last_name ?? ""}
+          />
         </CardContent>
       </Card>
 

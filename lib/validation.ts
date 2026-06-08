@@ -9,9 +9,24 @@ export const usernameSchema = z
   .max(24, "Login może mieć maksymalnie 24 znaki")
   .regex(/^[a-z0-9_.-]+$/i, "Login może zawierać tylko litery, cyfry, _ . -")
 
+// Imię / nazwisko (nazwa wyświetlana) — dozwolone litery (w tym polskie),
+// spacje oraz . ' - . Pole opcjonalne (może być puste).
+export const nameFieldSchema = z
+  .string()
+  .trim()
+  .max(40, "Maksymalnie 40 znaków")
+  .regex(/^[\p{L} .'-]*$/u, "Dozwolone tylko litery, spacje oraz . ' -")
+
+export const profileNameSchema = z.object({
+  firstName: nameFieldSchema,
+  lastName: nameFieldSchema,
+})
+
 export const registerSchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
+  firstName: nameFieldSchema,
+  lastName: nameFieldSchema,
 })
 
 export const loginSchema = z.object({

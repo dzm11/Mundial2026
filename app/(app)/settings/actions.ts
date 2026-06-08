@@ -2,9 +2,41 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import { passwordSchema } from "@/lib/validation"
+import { passwordSchema, profileNameSchema } from "@/lib/validation"
 
 export type SettingsState = { ok?: boolean; error?: string }
+
+export async function updateNameAction(
+  _prev: SettingsState | undefined,
+  formData: FormData,
+): Promise<SettingsState> {
+  const parsed = profileNameSchema.safeParse({
+    firstName: formData.get("firstName") ?? "",
+    lastName: formData.get("lastName") ?? "",
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Niepoprawna nazwa" }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: "Niezalogowany" }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      first_name: parsed.data.firstName,
+      last_name: parsed.data.lastName,
+    })
+    .eq("id", user.id)
+  if (error) return { error: error.message }
+
+  // Nazwa wyświetlana pojawia się w siatce, rankingu i na podium.
+  revalidatePath("/", "layout")
+  return { ok: true }
+}
 
 export async function uploadAvatarAction(
   _prev: SettingsState | undefined,

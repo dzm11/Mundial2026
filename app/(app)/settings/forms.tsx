@@ -7,8 +7,59 @@ import { Label } from "@/components/ui/label"
 import {
   uploadAvatarAction,
   changePasswordAction,
+  updateNameAction,
   type SettingsState,
 } from "./actions"
+
+export function NameForm({
+  firstName,
+  lastName,
+}: {
+  firstName: string
+  lastName: string
+}) {
+  const [state, action, pending] = useActionState<SettingsState | undefined, FormData>(
+    updateNameAction,
+    undefined,
+  )
+
+  return (
+    <form action={action} className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">Imię</Label>
+          <Input
+            id="firstName"
+            name="firstName"
+            defaultValue={firstName}
+            maxLength={40}
+            autoComplete="given-name"
+            placeholder="np. Paweł"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Nazwisko</Label>
+          <Input
+            id="lastName"
+            name="lastName"
+            defaultValue={lastName}
+            maxLength={40}
+            autoComplete="family-name"
+            placeholder="np. Nowak"
+          />
+        </div>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Widoczne w siatce, rankingu i na podium. Login pozostaje bez zmian.
+      </p>
+      {state?.error && <p className="text-destructive text-sm">{state.error}</p>}
+      {state?.ok && <p className="text-success text-sm">Nazwa zaktualizowana.</p>}
+      <Button type="submit" disabled={pending} className="font-display font-semibold">
+        {pending ? "Zapisuję…" : "Zapisz nazwę"}
+      </Button>
+    </form>
+  )
+}
 
 export function AvatarForm() {
   const [state, action, pending] = useActionState<SettingsState | undefined, FormData>(

@@ -9,7 +9,7 @@ import { loginSchema, registerSchema, usernameToEmail } from "@/lib/validation"
 export type AuthState = {
   error?: string
   fieldErrors?: Record<string, string>
-  values?: { username?: string }
+  values?: { username?: string; firstName?: string; lastName?: string }
 }
 
 export async function registerAction(
@@ -17,11 +17,19 @@ export async function registerAction(
   formData: FormData,
 ): Promise<AuthState> {
   const usernameRaw = formData.get("username")
-  const values = { username: typeof usernameRaw === "string" ? usernameRaw : "" }
+  const firstNameRaw = formData.get("firstName")
+  const lastNameRaw = formData.get("lastName")
+  const values = {
+    username: typeof usernameRaw === "string" ? usernameRaw : "",
+    firstName: typeof firstNameRaw === "string" ? firstNameRaw : "",
+    lastName: typeof lastNameRaw === "string" ? lastNameRaw : "",
+  }
 
   const parsed = registerSchema.safeParse({
     username: usernameRaw,
     password: formData.get("password"),
+    firstName: firstNameRaw ?? "",
+    lastName: lastNameRaw ?? "",
   })
 
   if (!parsed.success) {
@@ -35,7 +43,7 @@ export async function registerAction(
     return { fieldErrors, values }
   }
 
-  const { username, password } = parsed.data
+  const { username, password, firstName, lastName } = parsed.data
   const admin = createAdminClient()
 
   // Sprawdź unikalność loginu
@@ -61,8 +69,8 @@ export async function registerAction(
   const { error: profileErr } = await admin.from("profiles").insert({
     id: created.user.id,
     username,
-    first_name: "",
-    last_name: "",
+    first_name: firstName,
+    last_name: lastName,
   })
   if (profileErr) {
     await admin.auth.admin.deleteUser(created.user.id)

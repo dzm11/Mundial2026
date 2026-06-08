@@ -11,7 +11,7 @@ type Props = {
 export function PhaseFilter({ value, onValueChange }: Props) {
   return (
     <Tabs value={value} onValueChange={(v) => onValueChange(v as PhaseKey)}>
-      <TabsList className="flex w-full justify-start overflow-x-auto sm:w-auto">
+      <TabsList className="no-scrollbar flex w-full justify-start overflow-x-auto overflow-y-hidden sm:w-auto">
         {PHASE_TABS.map((t) => (
           <TabsTrigger key={t.key} value={t.key} className="font-display whitespace-nowrap">
             {t.label}

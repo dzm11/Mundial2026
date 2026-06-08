@@ -11,6 +11,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "reset:users": "tsx --env-file=.env.local scripts/reset-users.ts",
     "test": "vitest run"
   },
   "dependencies": {

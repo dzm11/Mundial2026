@@ -37,6 +37,38 @@ function authorized(req: Request): boolean {
   return auth === `Bearer ${secret}`
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// fetch z timeoutem i retry — football-data bywa zrywa połączenie (SocketError:
+// "other side closed"). Ponawiamy błędy sieci oraz 429/5xx, z prostym backoffem.
+async function fetchFootballData(url: string, token: string): Promise<Response> {
+  const RETRIES = 3
+  const TIMEOUT_MS = 10_000
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "X-Auth-Token": token, "User-Agent": "mundial2026-cron/1.0" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      // 429/5xx — przejściowe; ponawiamy, chyba że to ostatnia próba
+      if ((res.status === 429 || res.status >= 500) && attempt < RETRIES) {
+        await sleep(attempt * 1000)
+        continue
+      }
+      return res
+    } catch (e) {
+      lastErr = e
+      if (attempt < RETRIES) {
+        await sleep(attempt * 1000)
+        continue
+      }
+    }
+  }
+  throw lastErr
+}
+
 export async function GET(req: Request) {
   if (!authorized(req)) {
     return new NextResponse("Unauthorized", { status: 401 })
@@ -48,10 +80,20 @@ export async function GET(req: Request) {
   }
 
   // Pobieramy mecze WC 2026 (id 2000) — TIER_ONE, dostępne na free planie
-  const res = await fetch("https://api.football-data.org/v4/competitions/2000/matches", {
-    headers: { "X-Auth-Token": token },
-    cache: "no-store",
-  })
+  let res: Response
+  try {
+    res = await fetchFootballData(
+      "https://api.football-data.org/v4/competitions/2000/matches",
+      token,
+    )
+  } catch (e) {
+    // Błąd sieci/timeout (np. SocketError "other side closed") — zwracamy 502
+    // z czytelnym komunikatem zamiast crashować pustym 500.
+    return NextResponse.json(
+      { error: "football-data unreachable", detail: e instanceof Error ? e.message : String(e) },
+      { status: 502 },
+    )
+  }
   if (!res.ok) {
     const body = await res.text()
     return NextResponse.json(

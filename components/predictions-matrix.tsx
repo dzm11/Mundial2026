@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   TableBody,
   TableCell,
@@ -47,6 +47,13 @@ function formatKickoff(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+// Krótki 3-literowy kod drużyny (FIFA) — fallback: pierwsze 3 litery nazwy.
+function teamCode(team: { fifa_code?: string | null; name?: string | null } | null): string {
+  if (team?.fifa_code) return team.fifa_code.toUpperCase()
+  const name = team?.name ?? ""
+  return name.normalize("NFD").replace(/[̀-ͯ]/g, "").slice(0, 3).toUpperCase() || "—"
 }
 
 function dayKey(iso: string): string {
@@ -115,19 +122,16 @@ function SectionBlock({
 }) {
   return (
     <>
-      {/* Day-section header row */}
+      {/* Day-section header row — single cell spanning the whole row so the long
+          day label doesn't dictate the first column's width (auto table-layout
+          sizes a column to its widest cell).  An inner `sticky left-0` keeps the
+          label pinned to the left while the grid scrolls horizontally. */}
       <TableRow className="bg-muted hover:bg-muted">
-        {/* Sticky first cell of section row — must be fully opaque so scrolled content doesn't bleed through */}
-        <TableCell
-          className="sticky left-0 z-10 bg-muted px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"
-        >
-          {section.title}
+        <TableCell colSpan={5 + players.length} className="bg-muted p-0">
+          <div className="sticky left-0 inline-block px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            {section.title}
+          </div>
         </TableCell>
-        {/* Remaining cells */}
-        <TableCell
-          colSpan={4 + players.length}
-          className="bg-muted py-2"
-        />
       </TableRow>
 
       {section.matches.map((match) => {
@@ -137,7 +141,7 @@ function SectionBlock({
         return (
           <TableRow key={match.id} className="border-t">
             {/* ── Sticky first column: match info ── */}
-            <TableCell className="sticky left-0 z-10 bg-card px-3 py-2">
+            <TableCell className="sticky left-0 z-10 w-[120px] min-w-[120px] bg-card px-2 py-2 sm:px-3">
               {/* This cell needs bg-card to mask scrolling rows */}
               <div className="flex flex-col gap-0.5 whitespace-nowrap">
                 <span className="font-mono font-medium text-foreground">
@@ -146,6 +150,22 @@ function SectionBlock({
                 <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
                   {shortStage(match.stage, match.group_letter)}
                 </span>
+
+                {/* Mobile-only: kompaktowy mecz (flagi + kody + wynik) — na desktopie
+                    te dane są w osobnych kolumnach Gospodarz/Wynik/Gość */}
+                <div className="mt-1 flex flex-col gap-0.5 sm:hidden">
+                  <div className="flex items-center gap-1.5">
+                    <Flag isoCode={match.team1?.iso_code} alt={match.team1?.name ?? ""} className="h-3.5 w-5" />
+                    <span className="text-xs font-medium">{teamCode(match.team1)}</span>
+                    <span className="ml-auto pl-1 font-mono text-sm tabular-nums">{match.result1 ?? "–"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Flag isoCode={match.team2?.iso_code} alt={match.team2?.name ?? ""} className="h-3.5 w-5" />
+                    <span className="text-xs font-medium">{teamCode(match.team2)}</span>
+                    <span className="ml-auto pl-1 font-mono text-sm tabular-nums">{match.result2 ?? "–"}</span>
+                  </div>
+                </div>
+
                 {(() => {
                   const clock = matchClock(match, now)
                   if (clock.phase === "live") {
@@ -170,24 +190,24 @@ function SectionBlock({
               </div>
             </TableCell>
 
-            {/* Home team */}
-            <TableCell className="px-2 py-2 text-right">
+            {/* Home team (desktop only) */}
+            <TableCell className="hidden px-2 py-2 text-right sm:table-cell">
               <span className="inline-flex items-center gap-2">
                 <span className="font-medium">{match.team1?.name ?? "—"}</span>
                 <Flag isoCode={match.team1?.iso_code} alt={match.team1?.name ?? ""} />
               </span>
             </TableCell>
 
-            {/* Result boxes */}
-            <TableCell className="px-1 py-2 text-center">
+            {/* Result boxes (desktop only) */}
+            <TableCell className="hidden px-1 py-2 text-center sm:table-cell">
               <ResultBox value={match.result1} status={match.status} />
             </TableCell>
-            <TableCell className="px-1 py-2 text-center">
+            <TableCell className="hidden px-1 py-2 text-center sm:table-cell">
               <ResultBox value={match.result2} status={match.status} />
             </TableCell>
 
-            {/* Away team */}
-            <TableCell className="px-2 py-2 text-left">
+            {/* Away team (desktop only) */}
+            <TableCell className="hidden px-2 py-2 text-left sm:table-cell">
               <span className="inline-flex items-center gap-2">
                 <Flag isoCode={match.team2?.iso_code} alt={match.team2?.name ?? ""} />
                 <span className="font-medium">{match.team2?.name ?? "—"}</span>
@@ -333,13 +353,14 @@ export function PredictionsMatrix({
          *   which is the sole scroll root for both axes.  `TableHeader`, `TableBody`,
          *   `TableRow`, `TableHead`, and `TableCell` from shadcn/ui are used for the
          *   inner structure.
-         * - `maxHeight` on the ScrollArea makes the viewport vertically finite so
-         *   `sticky top-0` on the header row works correctly.
+         * - No vertical height cap on any breakpoint: the table renders at full
+         *   height and the *page* scrolls naturally (no cramped inner scroll
+         *   window).  Trade-off: `sticky top-0` on the header has no effect without
+         *   an inner scroll container — the day-section rows act as separators
+         *   instead.  The sticky LEFT match column still works; it depends on
+         *   horizontal overflow, not the vertical height cap.
          */
-        <ScrollArea
-          className="rounded-lg border bg-card"
-          style={{ maxHeight: "calc(100vh - 14rem)" }}
-        >
+        <ScrollArea className="rounded-lg border bg-card">
             <table className="w-full caption-bottom text-sm">
               {/* ── Sticky header ── */}
               <TableHeader>
@@ -352,22 +373,23 @@ export function PredictionsMatrix({
                   <TableHead
                     className={cn(
                       "sticky left-0 top-0 z-30 bg-card",
-                      "w-[7.5rem] min-w-[7.5rem] px-3 py-3",
+                      "w-[120px] min-w-[120px] px-2 py-3 sm:px-3",
                     )}
                   >
                     <span className="font-display text-xs uppercase tracking-wide text-muted-foreground">
-                      Termin
+                      <span className="sm:hidden">Mecz</span>
+                      <span className="hidden sm:inline">Termin</span>
                     </span>
                   </TableHead>
 
-                  {/* Home team header — sticky top, not left */}
-                  <TableHead className="sticky top-0 z-20 bg-card px-3 py-3 text-right">
+                  {/* Home team header — sticky top, not left (desktop only) */}
+                  <TableHead className="sticky top-0 z-20 hidden bg-card px-3 py-3 text-right sm:table-cell">
                     <span className="text-xs font-medium text-muted-foreground">Gospodarz</span>
                   </TableHead>
 
-                  {/* Score headers */}
+                  {/* Score headers (desktop only) */}
                   <TableHead
-                    className="sticky top-0 z-20 bg-card px-1 py-3 text-center"
+                    className="sticky top-0 z-20 hidden bg-card px-1 py-3 text-center sm:table-cell"
                     colSpan={2}
                   >
                     <span className="font-display text-xs uppercase tracking-wide text-muted-foreground">
@@ -375,8 +397,8 @@ export function PredictionsMatrix({
                     </span>
                   </TableHead>
 
-                  {/* Away team header */}
-                  <TableHead className="sticky top-0 z-20 bg-card px-3 py-3 text-left">
+                  {/* Away team header (desktop only) */}
+                  <TableHead className="sticky top-0 z-20 hidden bg-card px-3 py-3 text-left sm:table-cell">
                     <span className="text-xs font-medium text-muted-foreground">Gość</span>
                   </TableHead>
 
@@ -430,8 +452,6 @@ export function PredictionsMatrix({
                 ))}
               </TableBody>
             </table>
-          {/* Horizontal scrollbar rendered by ScrollArea */}
-          <ScrollBar orientation="horizontal" />
         </ScrollArea>
       )}
 

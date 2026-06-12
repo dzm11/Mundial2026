@@ -45,22 +45,3 @@ function humanizeDbError(raw: string): string {
   if (/duplicate key/i.test(raw)) return "Konflikt zapisu, odśwież stronę"
   return raw
 }
-
-export async function confirmAllPredictions(): Promise<PredictionResult> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { ok: false, error: "Niezalogowany" }
-
-  const { error } = await supabase
-    .from("predictions")
-    .update({ confirmed_at: new Date().toISOString() })
-    .eq("user_id", user.id)
-    .is("confirmed_at", null)
-
-  if (error) return { ok: false, error: error.message }
-
-  revalidatePath("/")
-  return { ok: true }
-}

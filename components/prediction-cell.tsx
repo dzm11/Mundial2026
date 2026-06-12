@@ -18,7 +18,6 @@ type Props = {
   isOwn: boolean
   pred1: number | null
   pred2: number | null
-  confirmed: boolean
   actualResult1?: number | null
   actualResult2?: number | null
 }
@@ -29,7 +28,6 @@ export function PredictionCell({
   isOwn,
   pred1: initial1,
   pred2: initial2,
-  confirmed,
   actualResult1,
   actualResult2,
 }: Props) {
@@ -161,7 +159,6 @@ export function PredictionCell({
         onBlur={() => save(v1, v2)}
         className={cn(
           "h-9 w-11 px-1 text-center font-mono tabular-nums text-base sm:h-8 sm:w-10",
-          confirmed && saved !== "err" && "border-primary/40",
           saved === "ok" && "border-success",
           saved === "err" && "border-destructive",
         )}
@@ -179,7 +176,6 @@ export function PredictionCell({
         onBlur={() => save(v1, v2)}
         className={cn(
           "h-9 w-11 px-1 text-center font-mono tabular-nums text-base sm:h-8 sm:w-10",
-          confirmed && saved !== "err" && "border-primary/40",
           saved === "ok" && "border-success",
           saved === "err" && "border-destructive",
         )}

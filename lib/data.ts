@@ -27,7 +27,7 @@ export async function getPredictions(): Promise<PredictionRow[]> {
   const supabase = await createClient()
   const { data } = await supabase
     .from("predictions")
-    .select("user_id, match_id, pred1, pred2, confirmed_at")
+    .select("user_id, match_id, pred1, pred2")
   return (data ?? []) as PredictionRow[]
 }
 

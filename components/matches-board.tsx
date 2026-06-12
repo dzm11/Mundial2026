@@ -1,12 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
-import { toast } from "sonner"
+import { useEffect, useMemo, useState } from "react"
 
-import { Button } from "@/components/ui/button"
 import { MatchCard } from "@/components/match-card"
 import { PhaseFilter } from "@/components/phase-filter"
-import { confirmAllPredictions } from "@/app/(app)/actions"
 import { matchInPhase, type PhaseKey } from "@/lib/groups"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
 
@@ -54,7 +51,6 @@ export function MatchesBoard({
   serverNow,
 }: MatchesBoardProps) {
   const [phase, setPhase] = useState<PhaseKey>("upcoming")
-  const [isPending, startTransition] = useTransition()
 
   // `now` startuje od serverNow (prop — identyczny na serwerze i przy
   // hydratacji), po zamontowaniu odświeża się co 30 s realnym czasem.
@@ -97,31 +93,11 @@ export function MatchesBoard({
       }))
   }, [filteredMatches])
 
-  const handleConfirmAll = () => {
-    startTransition(async () => {
-      const result = await confirmAllPredictions()
-      if (result.ok) {
-        toast.success("Typy zatwierdzone")
-      } else {
-        toast.error(result.error ?? "Nie udało się zapisać")
-      }
-    })
-  }
-
   return (
     <div className="space-y-4">
-      {/* Top bar: phase filter + confirm button */}
+      {/* Top bar: phase filter */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PhaseFilter value={phase} onValueChange={setPhase} />
-
-        <Button
-          onClick={handleConfirmAll}
-          disabled={isPending}
-          size="sm"
-          className="shrink-0"
-        >
-          {isPending ? "Zapisuję…" : "Zatwierdź typy"}
-        </Button>
       </div>
 
       {/* Empty state */}

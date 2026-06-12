@@ -173,7 +173,6 @@ function FriendsSheetBody({
                   isOwn={false}
                   pred1={row?.pred1 ?? null}
                   pred2={row?.pred2 ?? null}
-                  confirmed={row?.confirmed_at != null}
                   actualResult1={match.result1}
                   actualResult2={match.result2}
                 />
@@ -231,7 +230,6 @@ export function MatchCard({
           {
             pred1: currentUserRow.pred1,
             pred2: currentUserRow.pred2,
-            confirmedAt: currentUserRow.confirmed_at,
           },
         )
       : null
@@ -343,7 +341,6 @@ export function MatchCard({
               isOwn={true}
               pred1={currentUserRow?.pred1 ?? null}
               pred2={currentUserRow?.pred2 ?? null}
-              confirmed={currentUserRow?.confirmed_at != null}
               actualResult1={match.result1}
               actualResult2={match.result2}
             />

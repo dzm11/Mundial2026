@@ -1,10 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
-import { toast } from "sonner"
+import { useEffect, useMemo, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   TableBody,
@@ -16,7 +14,6 @@ import {
 import { Flag } from "@/components/flag"
 import { PhaseFilter } from "@/components/phase-filter"
 import { PredictionCell } from "@/components/prediction-cell"
-import { confirmAllPredictions } from "@/app/(app)/actions"
 import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
 import { matchInPhase, shortStage, type PhaseKey } from "@/lib/groups"
 import { matchClock } from "@/lib/match-clock"
@@ -232,7 +229,6 @@ function SectionBlock({
                     isOwn={player.id === currentUserId}
                     pred1={p?.pred1 ?? null}
                     pred2={p?.pred2 ?? null}
-                    confirmed={!!p?.confirmed_at}
                     actualResult1={match.result1}
                     actualResult2={match.result2}
                   />
@@ -256,7 +252,6 @@ export function PredictionsMatrix({
   serverNow,
 }: Props) {
   const [phase, setPhase] = useState<PhaseKey>("upcoming")
-  const [pending, startTransition] = useTransition()
 
   // `now` startuje od serverNow (prop — identyczny na serwerze i przy
   // hydratacji), po zamontowaniu odświeża się co 30 s realnym czasem.
@@ -311,29 +306,11 @@ export function PredictionsMatrix({
       }))
   }, [filteredMatches])
 
-  const onConfirmAll = () => {
-    startTransition(async () => {
-      const result = await confirmAllPredictions()
-      if (result.ok) {
-        toast.success("Typy zatwierdzone!", {
-          description: "Wszystkie niezatwierdzone typy zostały zapisane.",
-        })
-      } else {
-        toast.error("Nie udało się zatwierdzić", {
-          description: result.error ?? "Spróbuj ponownie.",
-        })
-      }
-    })
-  }
-
   return (
     <div className="space-y-4">
-      {/* Controls row: phase filter + confirm button */}
+      {/* Controls row: phase filter */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PhaseFilter value={phase} onValueChange={setPhase} />
-        <Button onClick={onConfirmAll} disabled={pending} size="sm">
-          {pending ? "Zapisuję…" : "Zatwierdź moje typy"}
-        </Button>
       </div>
 
       {/* Empty state when no matches match the filter */}

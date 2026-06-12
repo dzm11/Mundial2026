@@ -41,5 +41,4 @@ export type PredictionRow = {
   match_id: number
   pred1: number
   pred2: number
-  confirmed_at: string | null
 }

@@ -7,10 +7,9 @@ const finished = (r1: number, r2: number) => ({
   result2: r2,
 })
 
-const pred = (p1: number, p2: number, confirmed = true) => ({
+const pred = (p1: number, p2: number) => ({
   pred1: p1,
   pred2: p2,
-  confirmedAt: confirmed ? new Date() : null,
 })
 
 describe("calculatePoints (3/1/0)", () => {
@@ -42,8 +41,8 @@ describe("calculatePoints (3/1/0)", () => {
     ).toBe(0)
   })
 
-  it("daje 0 pkt gdy typ nie został zatwierdzony", () => {
-    expect(calculatePoints(finished(2, 1), pred(2, 1, false))).toBe(0)
+  it("liczy typ niezależnie od zatwierdzenia (autosave wystarcza)", () => {
+    expect(calculatePoints(finished(2, 1), pred(2, 1))).toBe(3)
   })
 
   it("daje 0 pkt gdy result jest null mimo statusu FINISHED", () => {

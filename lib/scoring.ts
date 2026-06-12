@@ -2,7 +2,7 @@
 //   3 — dokładny wynik
 //   1 — poprawny zwycięzca/remis
 //   0 — pudło
-// Zwraca 0 dla niedokończonych meczów lub niepotwierdzonych typów.
+// Zwraca 0 dla niedokończonych meczów.
 
 export type MatchOutcome = {
   status: string
@@ -13,13 +13,11 @@ export type MatchOutcome = {
 export type Prediction = {
   pred1: number
   pred2: number
-  confirmedAt: string | Date | null
 }
 
 export function calculatePoints(match: MatchOutcome, pred: Prediction): number {
   if (match.status !== "FINISHED") return 0
   if (match.result1 == null || match.result2 == null) return 0
-  if (!pred.confirmedAt) return 0
 
   if (pred.pred1 === match.result1 && pred.pred2 === match.result2) return 3
 

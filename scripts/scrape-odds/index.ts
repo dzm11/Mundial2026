@@ -103,48 +103,55 @@ async function main() {
   console.log(`📋 ${matches.length} zakończonych meczów do pokrycia kursami`)
 
   const browser = await chromium.launch()
-  const page = await browser.newPage()
+  try {
+    const page = await browser.newPage()
 
-  const urls = await collectMatchUrls(page)
-  console.log(`🔗 Znaleziono ${urls.length} linków meczów na OddsPortal`)
+    const urls = await collectMatchUrls(page)
+    console.log(`🔗 Znaleziono ${urls.length} linków meczów na OddsPortal`)
 
-  let saved = 0
-  const skipped: string[] = []
+    let saved = 0
+    const skipped: string[] = []
 
-  for (const url of urls) {
-    try {
-      const scraped = await scrapeMatch(page, url)
-      if (!scraped) {
-        skipped.push(`${url} (brak kursów)`)
-        continue
+    for (const url of urls) {
+      try {
+        const scraped = await scrapeMatch(page, url)
+        if (!scraped) {
+          skipped.push(`${url} (brak kursów)`)
+          continue
+        }
+        // znajdź pasujący mecz po nazwach drużyn
+        let matched: { m: DbMatch; flip: boolean } | null = null
+        for (const mm of matches) {
+          const r = orient(scraped, mm)
+          if (r.ok) { matched = { m: mm, flip: r.flip }; break }
+        }
+        if (!matched) {
+          skipped.push(`${url} (${scraped.home} vs ${scraped.away} — brak dopasowania)`)
+          continue
+        }
+        const { m, flip } = matched
+        const rows = Object.entries(scraped.scores).map(([scoreline, odds]) => ({
+          match_id: m.id,
+          scoreline: flip ? flipScoreline(scoreline) : scoreline,
+          odds,
+          source: "oddsportal",
+        }))
+        const { error: upErr } = await supabase
+          .from("match_odds")
+          .upsert(rows, { onConflict: "match_id,scoreline" })
+        if (upErr) throw upErr
+        saved += rows.length
+        console.log(`✅ ${scraped.home} vs ${scraped.away} -> mecz #${m.id} (${rows.length} kursów)`)
+      } catch (e) {
+        skipped.push(`${url} (błąd: ${(e as Error).message})`)
       }
-      // znajdź pasujący mecz po nazwach drużyn
-      const m = matches.find((mm) => orient(scraped, mm).ok)
-      if (!m) {
-        skipped.push(`${url} (${scraped.home} vs ${scraped.away} — brak dopasowania)`)
-        continue
-      }
-      const { flip } = orient(scraped, m)
-      const rows = Object.entries(scraped.scores).map(([scoreline, odds]) => ({
-        match_id: m.id,
-        scoreline: flip ? flipScoreline(scoreline) : scoreline,
-        odds,
-        source: "oddsportal",
-      }))
-      const { error: upErr } = await supabase
-        .from("match_odds")
-        .upsert(rows, { onConflict: "match_id,scoreline" })
-      if (upErr) throw upErr
-      saved += rows.length
-      console.log(`✅ ${scraped.home} vs ${scraped.away} -> mecz #${m.id} (${rows.length} kursów)`)
-    } catch (e) {
-      skipped.push(`${url} (błąd: ${(e as Error).message})`)
     }
-  }
 
-  await browser.close()
-  console.log(`\n🎉 Zapisano ${saved} wierszy kursów. Pominięto ${skipped.length}:`)
-  for (const s of skipped) console.log(`   - ${s}`)
+    console.log(`\n🎉 Zapisano ${saved} wierszy kursów. Pominięto ${skipped.length}:`)
+    for (const s of skipped) console.log(`   - ${s}`)
+  } finally {
+    await browser.close()
+  }
 }
 
 main().catch((e) => {

@@ -18,8 +18,10 @@ describe("teamNameMatches", () => {
     expect(teamNameMatches("USA", "usa")).toBe(true)
   })
   it("dopasowuje przez alias", () => {
-    // alias: "south korea" (oddsportal) -> "korea republic" (nasza baza)
-    expect(teamNameMatches("Korea Republic", "South Korea")).toBe(true)
+    // alias: "korea republic" (OddsPortal) -> "south korea" (nasza baza)
+    // dbName="South Korea" to realny klucz z lib/wc2026-teams.ts
+    // scrapedName="Korea Republic" to etykieta z OddsPortal rozwiązywana przez TEAM_ALIASES
+    expect(teamNameMatches("South Korea", "Korea Republic")).toBe(true)
   })
   it("odrzuca różne drużyny", () => {
     expect(teamNameMatches("Brazil", "Argentina")).toBe(false)

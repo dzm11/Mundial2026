@@ -21,11 +21,14 @@ export function normalizeTeamName(name: string): string {
 }
 
 // Klucz = znormalizowana nazwa z OddsPortal; wartość = znormalizowana nazwa z naszej bazy.
-// Uzupełniać podczas realnego uruchomienia, gdy nazwy się nie zgadzają.
+// Tabela uzupełniana na bieżąco podczas realnego backfilla (Task 8), gdy obserwujemy
+// rzeczywiste etykiety OddsPortal i porównujemy z kluczami w lib/wc2026-teams.ts.
 export const TEAM_ALIASES: Record<string, string> = {
-  "south korea": "korea republic",
-  "usa": "united states",
+  // OddsPortal/Flashscore używa "Korea Republic"; w bazie mamy "South Korea"
+  "korea republic": "south korea",
+  // OddsPortal może używać "IR Iran"; w bazie mamy "Iran"
   "ir iran": "iran",
+  // "usa" zgadza się z kluczem "USA" po normalizacji — alias zbędny, usunięty
 }
 
 export function teamNameMatches(dbName: string, scrapedName: string): boolean {

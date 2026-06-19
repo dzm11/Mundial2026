@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
-import type { MatchWithTeams, Player, PredictionRow } from "@/lib/types"
+import type { MatchWithTeams, Player, PredictionRow, MatchOddsRow } from "@/lib/types"
+import type { OddsByMatch } from "@/lib/stats"
 
 const MATCH_SELECT =
   "id, external_id, stage, group_letter, team1_id, team2_id, kickoff_at, status, result1, result2, minute, is_demo, " +
@@ -38,4 +39,18 @@ export function sortPlayers(players: Player[]): Player[] {
     if (b.exact_hits !== a.exact_hits) return b.exact_hits - a.exact_hits
     return a.username.localeCompare(b.username, "pl")
   })
+}
+
+export async function getMatchOdds(): Promise<OddsByMatch> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("match_odds")
+    .select("match_id, scoreline, odds")
+  const map: OddsByMatch = new Map()
+  for (const row of (data ?? []) as MatchOddsRow[]) {
+    const rec = map.get(row.match_id) ?? {}
+    rec[row.scoreline] = Number(row.odds)
+    map.set(row.match_id, rec)
+  }
+  return map
 }

@@ -42,3 +42,9 @@ export type PredictionRow = {
   pred1: number
   pred2: number
 }
+
+export type MatchOddsRow = {
+  match_id: number
+  scoreline: string
+  odds: number
+}

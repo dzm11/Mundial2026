@@ -60,6 +60,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 Siatka
               </Button>
             </Link>
+            <Link href="/stats">
+              <Button variant="ghost" size="sm">
+                Stats
+              </Button>
+            </Link>
             <Link href="/regulamin">
               <Button variant="ghost" size="sm">
                 Regulamin

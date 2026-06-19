@@ -41,6 +41,7 @@ export function teamNameMatches(dbName: string, scrapedName: string): boolean {
 
 export function flipScoreline(scoreline: string): string {
   if (scoreline === "OTHER") return "OTHER"
+  if (!scoreline.includes(":")) return scoreline
   const [a, b] = scoreline.split(":")
   return `${b}:${a}`
 }

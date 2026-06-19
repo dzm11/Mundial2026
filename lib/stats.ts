@@ -80,6 +80,7 @@ export function computePlayerStats(
     if (pts === 3) {
       const win = STAKE * (kurs - 1)
       moneyBalance += win
+      // Ties keep the first maximum encountered (deterministic by prediction iteration order).
       if (!bestWin || win > bestWin.amount) {
         bestWin = { matchId: p.match_id, odds: kurs, amount: win }
       }

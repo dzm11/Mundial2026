@@ -35,6 +35,9 @@ describe("flipScoreline", () => {
   it("nie rusza OTHER", () => {
     expect(flipScoreline("OTHER")).toBe("OTHER")
   })
+  it("zwraca bez zmian malformed input bez dwukropka", () => {
+    expect(flipScoreline("5")).toBe("5")
+  })
 })
 
 describe("parseScore", () => {

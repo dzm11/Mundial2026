@@ -44,9 +44,19 @@ export function MoneyBoard({ rows, currentUserId }: Props) {
                 {index + 1}
               </span>
               <div className="flex flex-1 items-center gap-2.5 min-w-0">
-                <Avatar className="size-8 shrink-0">
+                <Avatar
+                  className={cn(
+                    "size-8 shrink-0",
+                    isCurrentUser ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "",
+                  )}
+                >
                   {player.avatar_url && <AvatarImage src={player.avatar_url} alt={player.username} />}
-                  <AvatarFallback className="text-xs font-semibold bg-muted text-muted-foreground">
+                  <AvatarFallback
+                    className={cn(
+                      "text-xs font-semibold",
+                      isCurrentUser ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
+                    )}
+                  >
                     {getInitials(player)}
                   </AvatarFallback>
                 </Avatar>

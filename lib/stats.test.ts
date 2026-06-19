@@ -57,11 +57,14 @@ describe("computePlayerStats — bilans", () => {
     expect(s.bestWin).toEqual({ matchId: 1, odds: 7.5, amount: 650 })
   })
 
-  it("pudło daje -100", () => {
+  it("trafiony tylko zwykły wynik daje -100 w kasie", () => {
+    // pred 2:1 vs finished 1:1 → outcome MISS (home win vs draw), money −100
+    // Actually: pred("u", 1, 2, 1) vs finished(1, 1, 0) → home win in both → outcomeHit=1, exactHit=0
     const odds: OddsByMatch = new Map([[1, { "1:0": 7.5, "2:1": 9 }]])
     const s = computePlayerStats("u", [pred("u", 1, 2, 1)], matchesById, odds)
     expect(s.moneyBalance).toBeCloseTo(-100)
     expect(s.exactHits).toBe(0)
+    expect(s.outcomeHits).toBe(1)
     expect(s.evaluatedBets).toBe(1)
     expect(s.bestWin).toBeNull()
   })
@@ -101,6 +104,13 @@ describe("computePlayerStats — bilans", () => {
     const s = computePlayerStats("u", [pred("u", 5, 1, 1)], m, odds)
     expect(s.scored).toBe(0)
     expect(s.moneyBalance).toBe(0)
+  })
+
+  it("accuracy = 0 gdy brak ocenionych meczów", () => {
+    const odds: OddsByMatch = new Map()
+    const s = computePlayerStats("u", [], matchesById, odds)
+    expect(s.scored).toBe(0)
+    expect(s.accuracy).toBe(0)
   })
 
   it("accuracy = (dokładne+zwykłe)/scored", () => {

@@ -27,3 +27,11 @@ export function getInitials(p: NamedUser): string {
   const last = p.last_name?.trim()?.[0] ?? ""
   return (first + last).toUpperCase() || p.username.slice(0, 2).toUpperCase()
 }
+
+// Formatuje kwotę w zł ze znakiem: +650 zł / −100 zł / 0 zł
+export function formatPln(amount: number): string {
+  const rounded = Math.round(amount)
+  if (rounded === 0) return "0 zł"
+  const sign = rounded > 0 ? "+" : "−"
+  return `${sign}${Math.abs(rounded)} zł`
+}

@@ -2,13 +2,14 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CircleDot, Trophy, Grid3x3, User } from "lucide-react"
+import { CircleDot, Trophy, Grid3x3, BarChart3, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TABS = [
   { href: "/", label: "Mecze", icon: CircleDot },
   { href: "/ranking", label: "Ranking", icon: Trophy },
   { href: "/siatka", label: "Siatka", icon: Grid3x3 },
+  { href: "/stats", label: "Stats", icon: BarChart3 },
   { href: "/settings", label: "Profil", icon: User },
 ]
 
@@ -16,7 +17,7 @@ export function BottomNav() {
   const pathname = usePathname()
   return (
     <nav className="bg-card/95 supports-[backdrop-filter]:bg-card/80 fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur lg:hidden">
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-5">
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href)
           const Icon = tab.icon

@@ -13,6 +13,7 @@
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
     "reset:users": "tsx --env-file=.env.local scripts/reset-users.ts",
     "set:password": "tsx --env-file=.env.local scripts/set-password.ts",
+    "scrape:odds": "tsx --env-file=.env.local scripts/scrape-odds/index.ts",
     "test": "vitest run"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "agentation": "^3.0.2",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.1.7",
+    "playwright": "^1.61.0",
     "postcss": "^8",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",

@@ -19,6 +19,9 @@ export type PredictionLite = {
   pred2: number
 }
 
+// Pojedynczy trafiony (dodatni) kupon — składnik dodatni bilansu.
+export type WinDetail = { matchId: number; scoreline: string; odds: number; amount: number }
+
 export type PlayerStats = {
   userId: string
   moneyBalance: number
@@ -28,6 +31,8 @@ export type PlayerStats = {
   scored: number
   accuracy: number
   bestWin: { matchId: number; odds: number; amount: number } | null
+  // Trafione kupony (amount > 0) — pozwalają zweryfikować dodatnią część bilansu.
+  wins: WinDetail[]
 }
 
 export function scorelineKey(r1: number, r2: number): string {
@@ -62,6 +67,7 @@ export function computePlayerStats(
   let outcomeHits = 0
   let scored = 0
   let bestWin: PlayerStats["bestWin"] = null
+  const wins: WinDetail[] = []
 
   for (const p of predictions) {
     if (p.user_id !== userId) continue
@@ -80,6 +86,12 @@ export function computePlayerStats(
     if (pts === 3) {
       const win = STAKE * (kurs - 1)
       moneyBalance += win
+      wins.push({
+        matchId: p.match_id,
+        scoreline: scorelineKey(m.result1!, m.result2!),
+        odds: kurs,
+        amount: win,
+      })
       // Ties keep the first maximum encountered (deterministic by prediction iteration order).
       if (!bestWin || win > bestWin.amount) {
         bestWin = { matchId: p.match_id, odds: kurs, amount: win }
@@ -89,8 +101,10 @@ export function computePlayerStats(
     }
   }
 
+  // Największe wygrane na górze — czytelniejsza weryfikacja.
+  wins.sort((a, b) => b.amount - a.amount)
   const accuracy = scored > 0 ? (exactHits + outcomeHits) / scored : 0
-  return { userId, moneyBalance, evaluatedBets, exactHits, outcomeHits, scored, accuracy, bestWin }
+  return { userId, moneyBalance, evaluatedBets, exactHits, outcomeHits, scored, accuracy, bestWin, wins }
 }
 
 export function computeAllStats(

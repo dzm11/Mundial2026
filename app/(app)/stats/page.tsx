@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getLeaderboard, getPredictions, getMatches, getMatchOdds } from "@/lib/data"
 import { computeAllStats, oddsCoverage, type MatchLite } from "@/lib/stats"
-import { MoneyBoard } from "@/components/money-board"
+import { MoneyBoard, type MatchInfo } from "@/components/money-board"
 import { StatHighlights } from "@/components/stat-highlights"
 
 export const dynamic = "force-dynamic"
@@ -42,6 +42,11 @@ export default async function StatsPage() {
   const coverage = oddsCoverage(matchLite, odds)
   const missing = coverage.finished - coverage.withOdds
 
+  // Etykiety meczów (team1:team2) do rozwijanej listy trafionych kuponów.
+  const matchInfo: MatchInfo = new Map(
+    matches.map((m) => [m.id, { home: m.team1?.name ?? "?", away: m.team2?.name ?? "?" }]),
+  )
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -53,7 +58,10 @@ export default async function StatsPage() {
 
       <section className="space-y-3">
         <h2 className="font-display text-lg font-bold">💰 Bilans 100 zł / mecz</h2>
-        <MoneyBoard rows={rows} currentUserId={user.id} />
+        <MoneyBoard rows={rows} currentUserId={user.id} matchInfo={matchInfo} />
+        <p className="text-muted-foreground text-xs">
+          Kliknij gracza z trafieniami, aby zobaczyć mecze składające się na dodatnią część bilansu.
+        </p>
         {missing > 0 && (
           <p className="text-muted-foreground text-xs">
             Bilans liczony z {coverage.withOdds} z {coverage.finished} rozegranych meczów

@@ -55,6 +55,21 @@ describe("computePlayerStats — bilans", () => {
     expect(s.exactHits).toBe(1)
     expect(s.evaluatedBets).toBe(1)
     expect(s.bestWin).toEqual({ matchId: 1, odds: 7.5, amount: 650 })
+    expect(s.wins).toEqual([{ matchId: 1, scoreline: "1:0", odds: 7.5, amount: 650 }])
+  })
+
+  it("wins zawiera tylko trafione kupony, posortowane malejąco po wygranej", () => {
+    // mecz 1 (1:0) trafiony @7.5 → +650; mecz 3 (0:0) trafiony @11 → +1000; mecz 2 pudło
+    const odds: OddsByMatch = new Map<number, Record<string, number>>([
+      [1, { "1:0": 7.5 }],
+      [3, { "0:0": 11 }],
+    ])
+    const preds = [pred("u", 1, 1, 0), pred("u", 2, 0, 5), pred("u", 3, 0, 0)]
+    const s = computePlayerStats("u", preds, matchesById, odds)
+    expect(s.wins).toEqual([
+      { matchId: 3, scoreline: "0:0", odds: 11, amount: 1000 },
+      { matchId: 1, scoreline: "1:0", odds: 7.5, amount: 650 },
+    ])
   })
 
   it("trafiony tylko zwykły wynik daje -100 w kasie", () => {

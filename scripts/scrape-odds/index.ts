@@ -2,26 +2,28 @@
  * Scraper kursów correct-score z OddsPortal -> Supabase (tabela match_odds).
  *
  * Uruchomienie:        npm run scrape:odds
- * Tryb debug (okno + dump zakładek pierwszego meczu):
+ * Tryb debug (okno + dump pierwszego meczu):
  *                      HEADFUL=1 SCRAPE_DEBUG=1 MATCH_LIMIT=1 npm run scrape:odds
  *
  * Wymaga w .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  * Wymaga przeglądarki: zainstalowany Google Chrome (channel "chrome").
  *   OddsPortal blokuje (503) zwykłe headless Chromium — dlatego używamy realnego Chrome.
- *   Fallback do `npx playwright install chromium`, jeśli Chrome niedostępny (może być blokowany).
  *
- * Uwaga geo: OddsPortal przekierowuje klienta z PL na ścieżkę /pl/ ze slugiem
- *   "mistrzostwa-swiata-2026" (angielski slug 404-uje), więc startujemy od polskiego URL-a.
+ * Jak to działa (zweryfikowane na żywo):
+ *   - lista meczów: na stronie wyników turnieju linki prowadzą do /football/h2h/<a>/<b>/.
+ *   - rynek correct-score: strona meczu trzyma w location.hash id w formacie "<ID>:1X2;2".
+ *     Wymuszamy correct-score nawigując NA ŚWIEŻO do "<url>#<ID>:cs;2" (samo ustawienie
+ *     location.hash nie przełącza rynku — SPA ma własny router; pełna nawigacja działa).
+ *   - kursy: wiersze "1:0  ...  7.00" — parsujemy scoreline + kurs dziesiętny.
  *
  * Idempotentny: upsert po (match_id, scoreline).
  */
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
 import { createClient } from "@supabase/supabase-js"
-import { teamNameMatches, flipScoreline, parseScore } from "./parsing"
+import { teamNameMatches, flipScoreline } from "./parsing"
 
 const RESULTS_URL =
   "https://www.oddsportal.com/pl/football/world/mistrzostwa-swiata-2026/results/"
-const TOURNAMENT_SLUG = "mistrzostwa-swiata-2026"
 
 const HEADFUL = process.env.HEADFUL === "1"
 const DEBUG = process.env.SCRAPE_DEBUG === "1"
@@ -76,7 +78,7 @@ async function makeContext(browser: Browser): Promise<BrowserContext> {
 }
 
 // Nawigacja odporna na flaky-network: kilka prób, zanim się poddamy.
-async function gotoWithRetry(page: Page, url: string, tries = 4): Promise<boolean> {
+async function gotoWithRetry(page: Page, url: string, tries = 5): Promise<boolean> {
   for (let i = 1; i <= tries; i++) {
     try {
       await page.goto(url, { waitUntil: "commit", timeout: 30000 })
@@ -105,87 +107,112 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
   if (!(await gotoWithRetry(page, RESULTS_URL))) {
     throw new Error("Nie udało się załadować strony wyników OddsPortal (timeout).")
   }
-  // Czekaj aż SPA wyrenderuje linki meczów (zaszyfrowany feed jest odszyfrowywany po stronie strony).
-  let links: string[] = []
-  for (let i = 0; i < 18; i++) {
-    await page.waitForTimeout(2000)
-    const res = await safeEval(page, () =>
+  // Czekaj aż SPA wyrenderuje linki meczów (linki prowadzą do /football/h2h/<a>/<b>/),
+  // a następnie przewijaj stronę, by doładować WSZYSTKIE mecze (lazy-load).
+  const collect = async () =>
+    (await safeEval(page, () =>
       Array.from(document.querySelectorAll("a"))
         .map((a) => (a as HTMLAnchorElement).href)
         .filter(Boolean),
-    )
-    if (!res) continue
-    links = Array.from(
-      new Set(
-        res.filter(
-          (h) =>
-            h.includes(`${TOURNAMENT_SLUG}/`) &&
-            !/\/(results|outrights|standings)\/?$/.test(h) &&
-            /-[A-Za-z0-9]{6,}\/?$/.test(h),
-        ),
-      ),
-    )
-    if (links.length > 3) break
-  }
-  return links
-}
-
-// Otwórz zakładkę correct-score i odczytaj kursy. Selektory rynku correct-score nie były
-// w pełni zweryfikowane na żywo (flaky network) — przy pierwszym uruchomieniu użyj
-// SCRAPE_DEBUG=1, by wypisać dostępne etykiety zakładek rynków i dostroić matcher.
-async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedOdds | null> {
-  if (!(await gotoWithRetry(page, url))) return null
-  await page.waitForTimeout(2500)
-
-  if (debug) {
-    const tabs = await safeEval(page, () =>
-      Array.from(document.querySelectorAll("a,button,div"))
-        .map((e) => (e.textContent || "").trim())
-        .filter((t) => t.length > 0 && t.length < 30)
-        .filter((t) => /wynik|score|correct|1x2|handicap|over|under/i.test(t)),
-    )
-    console.log(`🔎 DEBUG zakładki rynków @ ${url}:`, JSON.stringify(Array.from(new Set(tabs ?? [])).slice(0, 20)))
-  }
-
-  // Zakładka "Correct Score" / pol. "Dokładny wynik".
-  const tab = page.getByText(/correct score|dok[łl]adny wynik/i).first()
-  try {
-    if (await tab.count()) {
-      await tab.click({ timeout: 5000 })
-      await page.waitForTimeout(2500)
-    }
-  } catch {
-    /* zostań na domyślnym widoku — i tak spróbujemy odczytać wiersze */
-  }
-
-  const home =
-    (await page.locator("[class*='participant'] >> nth=0").innerText().catch(() => "")) || ""
-  const away =
-    (await page.locator("[class*='participant'] >> nth=1").innerText().catch(() => "")) || ""
-
-  // Wiersze kursów: każdy ma etykietę wyniku (np. "1:0") i kurs dziesiętny.
-  const raw =
-    (await safeEval(page, () =>
-      Array.from(document.querySelectorAll("[class*='row'],[class*='Row']"))
-        .map((r) => (r as HTMLElement).innerText ?? "")
-        .filter((t) => /\d+\s*[:\-]\s*\d+|inny wynik|other/i.test(t)),
     )) ?? []
 
-  const scores: Record<string, number> = {}
-  for (const line of raw) {
-    const oddsMatch = line.match(/(\d+\.\d{1,2})/)
-    if (!oddsMatch) continue
-    const odds = Number(oddsMatch[1])
-    if (/inny wynik|other/i.test(line)) {
-      scores["OTHER"] = odds
-      continue
+  const found = new Set<string>()
+  const addFrom = (hrefs: string[]) => {
+    for (const h of hrefs) {
+      const clean = h.split("#")[0]
+      if (/\/football\/h2h\/[^/]+\/[^/]+\/?$/.test(clean)) found.add(clean)
     }
-    const sc = parseScore(line)
-    if (sc) scores[`${sc.r1}:${sc.r2}`] = odds
   }
 
-  if (Object.keys(scores).length === 0) return null
-  return { home: home.trim(), away: away.trim(), scores }
+  // poczekaj na pierwsze linki
+  for (let i = 0; i < 18 && found.size === 0; i++) {
+    await page.waitForTimeout(2000)
+    addFrom(await collect())
+  }
+
+  // przewijaj do końca, aż liczba linków przestanie rosnąć
+  let stable = 0
+  for (let i = 0; i < 40 && stable < 3; i++) {
+    const before = found.size
+    await safeEval(page, () => window.scrollTo(0, document.body.scrollHeight))
+    await page.waitForTimeout(1500)
+    addFrom(await collect())
+    stable = found.size === before ? stable + 1 : 0
+  }
+
+  return Array.from(found)
+}
+
+// Wczytaj stronę meczu, przełącz na correct-score, odczytaj nazwy drużyn i kursy.
+async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedOdds | null> {
+  const base = url.split("#")[0]
+  if (!(await gotoWithRetry(page, base))) return null
+
+  // 1) odczytaj id rynku z domyślnego hasha (np. "#KnyuOLXH:1X2;2" -> "KnyuOLXH").
+  let id: string | null = null
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(1500)
+    const h = await safeEval(page, () => location.hash)
+    if (h && h.includes(":")) {
+      id = h.replace(/^#/, "").split(":")[0]
+      break
+    }
+  }
+  if (!id) return null
+
+  // 2) wymuś correct-score świeżą nawigacją do pełnego hasha.
+  if (!(await gotoWithRetry(page, `${base}#${id}:cs;2`))) return null
+
+  // 3) poczekaj aż wyrenderują się wiersze wyników (scoreline + kurs).
+  let scraped: ScrapedOdds | null = null
+  for (let i = 0; i < 16; i++) {
+    await page.waitForTimeout(2000)
+    scraped = await safeEval(page, () => {
+        // Nazwy drużyn po ANGIELSKU (pasują do bazy) z tytułu/H1 — w kolejności gospodarz–gość.
+        //   title: "Germany - Ivory Coast Odds, Predictions & H2H | OddsPortal"
+        //   h1:    "Germany vs Ivory Coast - Odds, Predictions and H2H Results"
+        let home = "",
+          away = ""
+        const titleM = document.title.match(/^(.+?)\s-\s(.+?)\s+(?:Odds|Kursy|H2H)/i)
+        if (titleM) {
+          home = titleM[1].trim()
+          away = titleM[2].trim()
+        } else {
+          const h1 = (document.querySelector("h1")?.textContent || "").trim()
+          const h1M = h1.match(/^(.+?)\s+vs\s+(.+?)\s*[-–]/i)
+          if (h1M) {
+            home = h1M[1].trim()
+            away = h1M[2].trim()
+          }
+        }
+        // wiersze correct-score: skanuj wiersze i wyciągaj parę (scoreline, kurs)
+        const scores: Record<string, number> = {}
+        for (const el of Array.from(document.querySelectorAll("div,tr"))) {
+          const t = ((el as HTMLElement).innerText || "").replace(/\n/g, " ").trim()
+          if (t.length > 45) continue
+          const sc = t.match(/^(\d{1,2})\s*[:]\s*(\d{1,2})\b/)
+          const od = t.match(/\b(\d{1,3}\.\d{2})\b/)
+          if (sc && od) {
+            scores[`${Number(sc[1])}:${Number(sc[2])}`] = Number(od[1])
+          } else if (/inny wynik|other/i.test(t) && od) {
+            scores["OTHER"] = Number(od[1])
+          }
+        }
+        return { home, away, scores }
+    })
+    if (scraped && Object.keys(scraped.scores).length > 3) break
+  }
+
+  if (debug) {
+    console.log(
+      `🔎 DEBUG ${base}: home="${scraped?.home}" away="${scraped?.away}" ` +
+        `scores=${scraped ? Object.keys(scraped.scores).length : 0} ` +
+        `(${scraped ? JSON.stringify(scraped.scores).slice(0, 120) : "null"})`,
+    )
+  }
+
+  if (!scraped || Object.keys(scraped.scores).length === 0) return null
+  return scraped
 }
 
 // Dopasuj scraped -> nasz mecz; zwróć czy trzeba odwrócić scoreline.

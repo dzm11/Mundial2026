@@ -93,11 +93,13 @@ async function makeContext(browser: Browser): Promise<BrowserContext> {
   return ctx
 }
 
-// Nawigacja odporna na flaky-network: kilka prób, zanim się poddamy.
+// Nawigacja odporna na flaky-network. WAŻNE: waitUntil "load" (nie "commit") —
+// SPA OddsPortal potrzebuje pełnego załadowania zasobów, by się zbootstrapować
+// i pobrać feed kursów. "commit" wraca za wcześnie i strona zostaje pusta.
 async function gotoWithRetry(page: Page, url: string, tries = 5): Promise<boolean> {
   for (let i = 1; i <= tries; i++) {
     try {
-      await page.goto(url, { waitUntil: "commit", timeout: 30000 })
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 })
       return true
     } catch {
       if (i === tries) return false
@@ -105,6 +107,14 @@ async function gotoWithRetry(page: Page, url: string, tries = 5): Promise<boolea
     }
   }
   return false
+}
+
+// Pozwól SPA doładować dane i lekko przescrolluj (część widoków renderuje się po
+// przewinięciu). NIE czekamy na networkidle — OddsPortal ma live-odds i sieć nigdy
+// się nie wycisza (timeout zjadałby 20s za każdym razem).
+async function settle(page: Page): Promise<void> {
+  await safeEval(page, () => window.scrollTo(0, document.body.scrollHeight / 2))
+  await page.waitForTimeout(3000)
 }
 
 // Bezpieczny evaluate — strona bywa nawigowana w trakcie (SPA), więc ponawiamy.
@@ -156,29 +166,10 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
   return Array.from(found)
 }
 
-// Wczytaj stronę meczu, przełącz na correct-score, odczytaj datę, wynik i kursy.
-async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedMatch | null> {
-  const base = url.split("#")[0]
-  if (!(await gotoWithRetry(page, base))) return null
-
-  // 1) odczytaj id rynku z domyślnego hasha (np. "#KnyuOLXH:1X2;2" -> "KnyuOLXH").
-  let id: string | null = null
-  for (let i = 0; i < 12; i++) {
-    await page.waitForTimeout(1500)
-    const h = await safeEval(page, () => location.hash)
-    if (h && h.includes(":")) {
-      id = h.replace(/^#/, "").split(":")[0]
-      break
-    }
-  }
-  if (!id) return null
-
-  // 2) wymuś correct-score świeżą nawigacją do pełnego hasha.
-  if (!(await gotoWithRetry(page, `${base}#${id}:cs;2`))) return null
-
-  // 3) poczekaj aż wyrenderują się wiersze wyników (scoreline + kurs) i nagłówek.
+// Poll: wyciągnij datę, wynik i kursy z wyrenderowanej strony correct-score.
+async function pollExtract(page: Page): Promise<ScrapedMatch | null> {
   let scraped: ScrapedMatch | null = null
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 12; i++) {
     await page.waitForTimeout(2000)
     scraped = await safeEval(page, () => {
       // pomocniczo: czy element jest w panelu bocznym (inny mecz)
@@ -241,7 +232,50 @@ async function scrapeMatch(page: Page, url: string, debug = false): Promise<Scra
 
       return { home, away, dateText, resHome, resAway, scores }
     })
-    if (scraped && Object.keys(scraped.scores).length > 3 && scraped.dateText) break
+    if (scraped && Object.keys(scraped.scores).length > 3 && scraped.dateText) return scraped
+  }
+  return scraped
+}
+
+// Wczytaj stronę meczu i przełącz na correct-score. Render bywa kapryśny
+// (część chunków JS bywa ucinana), więc przy pustym wyniku PONAWIAMY cały
+// załadunek do 3× — to właśnie reload-loop daje odporność na flaky render.
+async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedMatch | null> {
+  const base = url.split("#")[0]
+  let scraped: ScrapedMatch | null = null
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (!(await gotoWithRetry(page, base))) continue
+    await settle(page) // pozwól SPA się zbootstrapować i ustawić location.hash
+
+    // odczytaj id rynku z domyślnego hasha (np. "#KnyuOLXH:1X2;2" -> "KnyuOLXH")
+    let id: string | null = null
+    for (let i = 0; i < 10; i++) {
+      const h = await safeEval(page, () => location.hash)
+      if (h && h.includes(":")) {
+        id = h.replace(/^#/, "").split(":")[0]
+        break
+      }
+      await page.waitForTimeout(1500)
+    }
+    if (!id) continue
+
+    // Wymuś correct-score: nawigacja do hasha + RELOAD. Sama zmiana hasha (ten sam
+    // dokument) NIE przełącza rynku — SPA zostaje na 1X2. Dopiero reload z hashem
+    // ":cs;2" w URL inicjalizuje stronę na rynku correct-score.
+    if (!(await gotoWithRetry(page, `${base}#${id}:cs;2`))) continue
+    try {
+      // domcontentloaded (nie "load") — OddsPortal ma live-odds i "load" nigdy nie
+      // wyzwala się czysto (timeout zjadałby 35s). Reload przełącza rynek na cs,
+      // a na dane czeka pollExtract.
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 })
+    } catch {
+      /* spróbujemy i tak odczytać */
+    }
+    await settle(page)
+
+    scraped = await pollExtract(page)
+    if (scraped && Object.keys(scraped.scores).length > 3) break
   }
 
   if (debug) {

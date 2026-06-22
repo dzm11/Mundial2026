@@ -12,15 +12,21 @@
  * Jak to działa (zweryfikowane na żywo):
  *   - lista meczów: na stronie wyników turnieju linki prowadzą do /football/h2h/<a>/<b>/.
  *   - rynek correct-score: strona meczu trzyma w location.hash id w formacie "<ID>:1X2;2".
- *     Wymuszamy correct-score nawigując NA ŚWIEŻO do "<url>#<ID>:cs;2" (samo ustawienie
- *     location.hash nie przełącza rynku — SPA ma własny router; pełna nawigacja działa).
+ *     Wymuszamy correct-score nawigując NA ŚWIEŻO do "<url>#<ID>:cs;2".
  *   - kursy: wiersze "1:0  ...  7.00" — parsujemy scoreline + kurs dziesiętny.
+ *
+ * MAPOWANIE meczu (ważne): NIE po nazwach drużyn — tytuł strony bywa raz po
+ * angielsku, raz po polsku, a nazwy bywają różne ("Bosnia & Herzegovina" vs
+ * "Bosnia and Herzegovina"). Mapujemy po DACIE I GODZINIE rozpoczęcia
+ * (kickoff_at, w bazie unikalny) — strefa przeglądarki ustawiona na UTC, więc
+ * czas ze strony = `kickoff_at` z bazy. Orientację scoreline (czy odwrócić)
+ * i poprawność dopasowania potwierdzamy WYNIKIEM końcowym (gospodarz:gość).
  *
  * Idempotentny: upsert po (match_id, scoreline).
  */
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
 import { createClient } from "@supabase/supabase-js"
-import { teamNameMatches, flipScoreline } from "./parsing"
+import { flipScoreline, parseUtcMinute, orientByResult } from "./parsing"
 
 const RESULTS_URL =
   "https://www.oddsportal.com/pl/football/world/mistrzostwa-swiata-2026/results/"
@@ -42,8 +48,17 @@ type DbMatch = {
   team2: { name: string } | null
 }
 
-// Mapa kursów z perspektywy GOSPODARZA OddsPortal: { "1:0": 7.5, ..., "OTHER": 60 }
-type ScrapedOdds = { home: string; away: string; scores: Record<string, number> }
+// Zescrapowany mecz: kursy (perspektywa gospodarza OddsPortal) + metadane do mapowania.
+type ScrapedMatch = {
+  home: string // tylko do logów
+  away: string // tylko do logów
+  dateText: string | null // surowy tekst daty z nagłówka, np. "20 Cze 2026, 03:00"
+  resHome: number | null // wynik końcowy gospodarza
+  resAway: number | null // wynik końcowy gościa
+  scores: Record<string, number> // { "1:0": 7.5, ..., "OTHER": 60 }
+}
+
+const minuteKey = (iso: string) => new Date(iso).toISOString().slice(0, 16)
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -64,10 +79,11 @@ async function launchBrowser(): Promise<Browser> {
 }
 
 async function makeContext(browser: Browser): Promise<BrowserContext> {
+  // timezoneId=UTC => czasy meczów ze strony są w UTC = zgodne z kickoff_at w bazie.
   const ctx = await browser.newContext({
     userAgent: UA,
     locale: "pl-PL",
-    timezoneId: "Europe/Warsaw",
+    timezoneId: "UTC",
     viewport: { width: 1400, height: 1000 },
     extraHTTPHeaders: { "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8" },
   })
@@ -107,8 +123,6 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
   if (!(await gotoWithRetry(page, RESULTS_URL))) {
     throw new Error("Nie udało się załadować strony wyników OddsPortal (timeout).")
   }
-  // Czekaj aż SPA wyrenderuje linki meczów (linki prowadzą do /football/h2h/<a>/<b>/),
-  // a następnie przewijaj stronę, by doładować WSZYSTKIE mecze (lazy-load).
   const collect = async () =>
     (await safeEval(page, () =>
       Array.from(document.querySelectorAll("a"))
@@ -124,7 +138,6 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
     }
   }
 
-  // poczekaj na pierwsze linki
   for (let i = 0; i < 18 && found.size === 0; i++) {
     await page.waitForTimeout(2000)
     addFrom(await collect())
@@ -143,8 +156,8 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
   return Array.from(found)
 }
 
-// Wczytaj stronę meczu, przełącz na correct-score, odczytaj nazwy drużyn i kursy.
-async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedOdds | null> {
+// Wczytaj stronę meczu, przełącz na correct-score, odczytaj datę, wynik i kursy.
+async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedMatch | null> {
   const base = url.split("#")[0]
   if (!(await gotoWithRetry(page, base))) return null
 
@@ -163,51 +176,78 @@ async function scrapeMatch(page: Page, url: string, debug = false): Promise<Scra
   // 2) wymuś correct-score świeżą nawigacją do pełnego hasha.
   if (!(await gotoWithRetry(page, `${base}#${id}:cs;2`))) return null
 
-  // 3) poczekaj aż wyrenderują się wiersze wyników (scoreline + kurs).
-  let scraped: ScrapedOdds | null = null
+  // 3) poczekaj aż wyrenderują się wiersze wyników (scoreline + kurs) i nagłówek.
+  let scraped: ScrapedMatch | null = null
   for (let i = 0; i < 16; i++) {
     await page.waitForTimeout(2000)
     scraped = await safeEval(page, () => {
-        // Nazwy drużyn po ANGIELSKU (pasują do bazy) z tytułu/H1 — w kolejności gospodarz–gość.
-        //   title: "Germany - Ivory Coast Odds, Predictions & H2H | OddsPortal"
-        //   h1:    "Germany vs Ivory Coast - Odds, Predictions and H2H Results"
-        let home = "",
-          away = ""
-        const titleM = document.title.match(/^(.+?)\s-\s(.+?)\s+(?:Odds|Kursy|H2H)/i)
-        if (titleM) {
-          home = titleM[1].trim()
-          away = titleM[2].trim()
-        } else {
-          const h1 = (document.querySelector("h1")?.textContent || "").trim()
-          const h1M = h1.match(/^(.+?)\s+vs\s+(.+?)\s*[-–]/i)
-          if (h1M) {
-            home = h1M[1].trim()
-            away = h1M[2].trim()
-          }
+      // pomocniczo: czy element jest w panelu bocznym (inny mecz)
+      function inSidebar(el: Element | null): boolean {
+        let p: Element | null = el
+        while (p) {
+          const c = (p.className || "").toString().toLowerCase()
+          const tag = p.tagName?.toLowerCase() || ""
+          if (tag === "aside" || /sidebar|right-?col|menu|nav/.test(c)) return true
+          p = p.parentElement
         }
-        // wiersze correct-score: skanuj wiersze i wyciągaj parę (scoreline, kurs)
-        const scores: Record<string, number> = {}
-        for (const el of Array.from(document.querySelectorAll("div,tr"))) {
-          const t = ((el as HTMLElement).innerText || "").replace(/\n/g, " ").trim()
-          if (t.length > 45) continue
-          const sc = t.match(/^(\d{1,2})\s*[:]\s*(\d{1,2})\b/)
-          const od = t.match(/\b(\d{1,3}\.\d{2})\b/)
-          if (sc && od) {
-            scores[`${Number(sc[1])}:${Number(sc[2])}`] = Number(od[1])
-          } else if (/inny wynik|other/i.test(t) && od) {
-            scores["OTHER"] = Number(od[1])
-          }
+        return false
+      }
+
+      // nazwy tylko do logów (mogą być PL lub EN — nie używamy ich do mapowania)
+      let home = "",
+        away = ""
+      const titleM = document.title.match(/^(.+?)\s-\s(.+?)\s+(?:Odds|Kursy|H2H)/i)
+      if (titleM) {
+        home = titleM[1].trim()
+        away = titleM[2].trim()
+      }
+
+      // data z NAGŁÓWKA meczu (nie z panelu bocznego)
+      let dateText: string | null = null
+      const dateRe = /\d{1,2}\s+[A-Za-zżźćńółęąśŻŹĆĄŚĘŁÓŃ]{3,}\s+20\d\d[, ]+\d{1,2}:\d{2}/
+      for (const el of Array.from(document.querySelectorAll("div,span,p,h1,h2"))) {
+        const t = ((el as HTMLElement).innerText || "").replace(/\n+/g, " ").trim()
+        if (t.length < 6 || t.length > 60) continue
+        const m = t.match(dateRe)
+        if (m && !inSidebar(el)) {
+          dateText = m[0]
+          break
         }
-        return { home, away, scores }
+      }
+
+      // wynik końcowy gospodarz:gość (do orientacji i weryfikacji)
+      let resHome: number | null = null,
+        resAway: number | null = null
+      const body = document.body.innerText.replace(/\n+/g, " ")
+      const rm = body.match(/(?:wynik\s*końcowy|final\s*result)\D{0,6}(\d{1,2})\s*[:\-–]\s*(\d{1,2})/i)
+      if (rm) {
+        resHome = Number(rm[1])
+        resAway = Number(rm[2])
+      }
+
+      // wiersze correct-score: scoreline + kurs dziesiętny
+      const scores: Record<string, number> = {}
+      for (const el of Array.from(document.querySelectorAll("div,tr"))) {
+        const t = ((el as HTMLElement).innerText || "").replace(/\n/g, " ").trim()
+        if (t.length > 45) continue
+        const sc = t.match(/^(\d{1,2})\s*[:]\s*(\d{1,2})\b/)
+        const od = t.match(/\b(\d{1,3}\.\d{2})\b/)
+        if (sc && od) {
+          scores[`${Number(sc[1])}:${Number(sc[2])}`] = Number(od[1])
+        } else if (/inny wynik|other/i.test(t) && od) {
+          scores["OTHER"] = Number(od[1])
+        }
+      }
+
+      return { home, away, dateText, resHome, resAway, scores }
     })
-    if (scraped && Object.keys(scraped.scores).length > 3) break
+    if (scraped && Object.keys(scraped.scores).length > 3 && scraped.dateText) break
   }
 
   if (debug) {
     console.log(
-      `🔎 DEBUG ${base}: home="${scraped?.home}" away="${scraped?.away}" ` +
-        `scores=${scraped ? Object.keys(scraped.scores).length : 0} ` +
-        `(${scraped ? JSON.stringify(scraped.scores).slice(0, 120) : "null"})`,
+      `🔎 DEBUG ${base}: "${scraped?.home}" vs "${scraped?.away}" | data="${scraped?.dateText}" ` +
+        `wynik=${scraped?.resHome}:${scraped?.resAway} | kursy=${scraped ? Object.keys(scraped.scores).length : 0}`,
     )
   }
 
@@ -215,13 +255,29 @@ async function scrapeMatch(page: Page, url: string, debug = false): Promise<Scra
   return scraped
 }
 
-// Dopasuj scraped -> nasz mecz; zwróć czy trzeba odwrócić scoreline.
-function orient(scraped: ScrapedOdds, m: DbMatch): { ok: boolean; flip: boolean } {
-  const t1 = m.team1?.name ?? ""
-  const t2 = m.team2?.name ?? ""
-  if (teamNameMatches(t1, scraped.home) && teamNameMatches(t2, scraped.away)) return { ok: true, flip: false }
-  if (teamNameMatches(t1, scraped.away) && teamNameMatches(t2, scraped.home)) return { ok: true, flip: true }
-  return { ok: false, flip: false }
+// Dopasuj zescrapowany mecz do bazy po dacie+godzinie, orientuj scoreline wynikiem.
+function matchByDateTime(
+  scraped: ScrapedMatch,
+  byTime: Map<string, DbMatch[]>,
+): { m: DbMatch; flip: boolean } | null {
+  const iso = parseUtcMinute(scraped.dateText)
+  if (!iso) return null
+  const candidates = byTime.get(iso)
+  if (!candidates || candidates.length === 0) return null
+
+  const { resHome, resAway } = scraped
+  for (const m of candidates) {
+    // wynik musi się zgadzać w jakiejś orientacji (potwierdza dopasowanie + ustala flip)
+    const o = orientByResult(resHome, resAway, m.result1, m.result2)
+    if (o) return { m, flip: o.flip }
+  }
+  // brak danych o wyniku, ale dokładnie 1 kandydat o tej godzinie -> dopasuj;
+  // flip ustalamy tylko gdy remis (bez znaczenia), inaczej odpuszczamy (orientacja nieznana)
+  if ((resHome == null || resAway == null) && candidates.length === 1) {
+    const m = candidates[0]
+    if (m.result1 != null && m.result1 === m.result2) return { m, flip: false }
+  }
+  return null
 }
 
 async function main() {
@@ -234,13 +290,23 @@ async function main() {
   const matches = (data ?? []) as unknown as DbMatch[]
   console.log(`📋 ${matches.length} zakończonych meczów do pokrycia kursami`)
 
+  // indeks meczów po minucie rozpoczęcia (kickoff_at)
+  const byTime = new Map<string, DbMatch[]>()
+  for (const m of matches) {
+    const k = minuteKey(m.kickoff_at)
+    const arr = byTime.get(k)
+    if (arr) arr.push(m)
+    else byTime.set(k, [m])
+  }
+
   const browser = await launchBrowser()
   const ctx = await makeContext(browser)
   try {
     const page = await ctx.newPage()
 
-    let urls = await collectMatchUrls(page)
-    console.log(`🔗 Znaleziono ${urls.length} linków meczów na OddsPortal`)
+    // MATCH_URL=<url> — pomiń listę i scrapuj tylko jeden mecz (diagnostyka).
+    let urls = process.env.MATCH_URL ? [process.env.MATCH_URL] : await collectMatchUrls(page)
+    if (!process.env.MATCH_URL) console.log(`🔗 Znaleziono ${urls.length} linków meczów na OddsPortal`)
     if (MATCH_LIMIT > 0) urls = urls.slice(0, MATCH_LIMIT)
 
     let saved = 0
@@ -250,19 +316,14 @@ async function main() {
       try {
         const scraped = await scrapeMatch(page, url, DEBUG && i === 0)
         if (!scraped) {
-          skipped.push(`${url} (brak kursów)`)
+          skipped.push(`${url} (brak kursów/danych)`)
           continue
         }
-        let matched: { m: DbMatch; flip: boolean } | null = null
-        for (const mm of matches) {
-          const r = orient(scraped, mm)
-          if (r.ok) {
-            matched = { m: mm, flip: r.flip }
-            break
-          }
-        }
+        const matched = matchByDateTime(scraped, byTime)
         if (!matched) {
-          skipped.push(`${url} (${scraped.home} vs ${scraped.away} — brak dopasowania)`)
+          skipped.push(
+            `${url} (${scraped.home} vs ${scraped.away}, ${scraped.dateText}, wynik ${scraped.resHome}:${scraped.resAway} — brak dopasowania)`,
+          )
           continue
         }
         const { m, flip } = matched
@@ -277,7 +338,9 @@ async function main() {
           .upsert(rows, { onConflict: "match_id,scoreline" })
         if (upErr) throw upErr
         saved += rows.length
-        console.log(`✅ ${scraped.home} vs ${scraped.away} -> mecz #${m.id} (${rows.length} kursów)`)
+        console.log(
+          `✅ ${m.team1?.name} ${m.result1}-${m.result2} ${m.team2?.name} -> mecz #${m.id} (${rows.length} kursów${flip ? ", odwrócone" : ""})`,
+        )
       } catch (e) {
         skipped.push(`${url} (błąd: ${(e as Error).message})`)
       }

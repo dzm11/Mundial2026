@@ -52,11 +52,19 @@ Zmienne sterujące:
    1. wczytać `/football/h2h/<a>/<b>/`,
    2. odczytać `<ID>` z domyślnego hasha,
    3. **świeżo nawigować** do `<url>#<ID>:cs;2`.
-4. **Nazwy drużyn (po ANGIELSKU):** mimo polskiej wersji strony
-   `document.title` jest po angielsku, np.
-   `"Germany - Ivory Coast Odds, Predictions & H2H | OddsPortal"` — w kolejności
-   **gospodarz – gość**. Te nazwy pasują wprost do `teams.name` w bazie i ustalają
-   orientację scoreline (`team1:team2`). Fallback: H1 `"<Home> vs <Away> - ..."`.
+4. **Mapowanie meczu — po DACIE+GODZINIE (NIE po nazwach):** nazwy drużyn są
+   zawodne — `document.title` bywa raz po angielsku, raz po polsku, a nazwy się
+   różnią (`"Bosnia & Herzegovina"` vs `"Bosnia and Herzegovina"`). Dlatego:
+   - strefa przeglądarki = **UTC**, więc czas meczu ze strony == `kickoff_at`
+     z bazy (w bazie kickoff_at jest unikalny dla meczu),
+   - datę bierzemy z **nagłówka meczu** (pomijając panel boczny), parsujemy
+     `parseUtcMinute` (PL+EN skróty miesięcy) → `"YYYY-MM-DDTHH:MM"`,
+   - dopasowujemy mecz z bazy po tej minucie,
+   - **orientację scoreline i poprawność dopasowania** potwierdzamy WYNIKIEM
+     końcowym (`orientByResult`): wynik OddsPortal `gospodarz:gość` musi się
+     zgadzać z `team1:team2` w którejś orientacji (inaczej to nie ten mecz).
+   Logika jest czysta i otestowana: `scripts/scrape-odds/parsing.ts`
+   (`parseUtcMinute`, `orientByResult`) + `parsing.test.ts`.
 5. **Parsowanie kursów:** każdy wiersz to scoreline + kurs dziesiętny
    (`"1:0  …  7.00"`). Rzadkie wyniki: `"Inny wynik"/"OTHER"`.
 6. **Zapis:** upsert do `public.match_odds` (`match_id, scoreline, odds, source`),
@@ -74,12 +82,15 @@ Plik: `scripts/scrape-odds/index.ts` (I/O) + `scripts/scrape-odds/parsing.ts`
   `safeEval`). Pojedynczy mecz potrafi się nie doczytać; ponowny przebieg go dobierze.
 - **Buforowanie stdout.** Przy uruchomieniu nie-TTY (CI/background) logi nie
   pojawiają się na bieżąco. **Postęp sprawdzaj zapytaniem do bazy**, nie po stdout.
-- **Rozbieżność fikstur.** Kursy mapują się tylko dla meczów istniejących
-  **i** w naszej bazie (`status = 'FINISHED'`), **i** na OddsPortal. Mecze pucharowe
-  z naszej demo-drabinki, które różnią się od realnych par OddsPortal, są pomijane
-  (log „brak dopasowania"). To oczekiwane.
-- **Nazwy drużyn.** Jeśli pojawi się „brak dopasowania" mimo poprawnego meczu,
-  dodaj alias `OddsPortal → baza` w `TEAM_ALIASES` (`parsing.ts`) i odpal ponownie.
+- **Rozbieżność fikstur.** Mecz mapuje się tylko, gdy istnieje **i** w bazie
+  (`status = 'FINISHED'`), **i** na OddsPortal, o **tej samej godzinie**, z **tym
+  samym wynikiem**. Mecze pucharowe z demo-drabinki, które różnią się od realnych
+  par OddsPortal, mają inny wynik/godzinę → pomijane (log „brak dopasowania").
+  To oczekiwane i bezpieczne (nie przypiszemy kursów do złego meczu).
+- **Throttling OddsPortal.** Po intensywnym scrapowaniu z jednego IP strona
+  potrafi przestać renderować kursy (puste strony, `kursy=0` dla wszystkich).
+  To przejściowe — odczekaj / odpal z innego łącza. Diagnostyka jednego meczu:
+  `MATCH_URL="<url h2h>" SCRAPE_DEBUG=1 npm run scrape:odds`.
 
 ## Weryfikacja po przebiegu
 

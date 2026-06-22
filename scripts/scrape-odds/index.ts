@@ -96,10 +96,10 @@ async function makeContext(browser: Browser): Promise<BrowserContext> {
 // Nawigacja odporna na flaky-network. WAŻNE: waitUntil "load" (nie "commit") —
 // SPA OddsPortal potrzebuje pełnego załadowania zasobów, by się zbootstrapować
 // i pobrać feed kursów. "commit" wraca za wcześnie i strona zostaje pusta.
-async function gotoWithRetry(page: Page, url: string, tries = 5): Promise<boolean> {
+async function gotoWithRetry(page: Page, url: string, tries = 3): Promise<boolean> {
   for (let i = 1; i <= tries; i++) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 })
+      await page.goto(url, { waitUntil: "load", timeout: 40000 })
       return true
     } catch {
       if (i === tries) return false
@@ -109,12 +109,17 @@ async function gotoWithRetry(page: Page, url: string, tries = 5): Promise<boolea
   return false
 }
 
-// Pozwól SPA doładować dane i lekko przescrolluj (część widoków renderuje się po
-// przewinięciu). NIE czekamy na networkidle — OddsPortal ma live-odds i sieć nigdy
-// się nie wycisza (timeout zjadałby 20s za każdym razem).
+// Pozwól SPA pobrać i wyrenderować feed kursów. Czekanie na networkidle JEST
+// potrzebne — bez niego czytamy stronę zanim kursy się załadują (puste wyniki).
+// (timeout do 18s, bo OddsPortal ma live-odds i sieć rzadko się wycisza)
 async function settle(page: Page): Promise<void> {
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 18000 })
+  } catch {
+    /* nie wyciszyło się — kontynuuj, dane zwykle i tak są */
+  }
   await safeEval(page, () => window.scrollTo(0, document.body.scrollHeight / 2))
-  await page.waitForTimeout(3000)
+  await page.waitForTimeout(2500)
 }
 
 // Bezpieczny evaluate — strona bywa nawigowana w trakcie (SPA), więc ponawiamy.
@@ -169,7 +174,7 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
 // Poll: wyciągnij datę, wynik i kursy z wyrenderowanej strony correct-score.
 async function pollExtract(page: Page): Promise<ScrapedMatch | null> {
   let scraped: ScrapedMatch | null = null
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 8; i++) {
     await page.waitForTimeout(2000)
     scraped = await safeEval(page, () => {
       // pomocniczo: czy element jest w panelu bocznym (inny mecz)
@@ -244,13 +249,13 @@ async function scrapeMatch(page: Page, url: string, debug = false): Promise<Scra
   const base = url.split("#")[0]
   let scraped: ScrapedMatch | null = null
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     if (!(await gotoWithRetry(page, base))) continue
     await settle(page) // pozwól SPA się zbootstrapować i ustawić location.hash
 
     // odczytaj id rynku z domyślnego hasha (np. "#KnyuOLXH:1X2;2" -> "KnyuOLXH")
     let id: string | null = null
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
       const h = await safeEval(page, () => location.hash)
       if (h && h.includes(":")) {
         id = h.replace(/^#/, "").split(":")[0]
@@ -265,10 +270,7 @@ async function scrapeMatch(page: Page, url: string, debug = false): Promise<Scra
     // ":cs;2" w URL inicjalizuje stronę na rynku correct-score.
     if (!(await gotoWithRetry(page, `${base}#${id}:cs;2`))) continue
     try {
-      // domcontentloaded (nie "load") — OddsPortal ma live-odds i "load" nigdy nie
-      // wyzwala się czysto (timeout zjadałby 35s). Reload przełącza rynek na cs,
-      // a na dane czeka pollExtract.
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 })
+      await page.reload({ waitUntil: "load", timeout: 40000 })
     } catch {
       /* spróbujemy i tak odczytać */
     }

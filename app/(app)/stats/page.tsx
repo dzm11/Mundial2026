@@ -41,6 +41,8 @@ export default async function StatsPage() {
 
   const coverage = oddsCoverage(matchLite, odds)
   const missing = coverage.finished - coverage.withOdds
+  const coveragePct =
+    coverage.finished > 0 ? Math.round((coverage.withOdds / coverage.finished) * 100) : 0
 
   // Etykiety meczów (team1:team2) do rozwijanej listy trafionych kuponów.
   const matchInfo: MatchInfo = new Map(
@@ -58,16 +60,33 @@ export default async function StatsPage() {
 
       <section className="space-y-3">
         <h2 className="font-display text-lg font-bold">💰 Bilans 100 zł / mecz</h2>
+
+        {/* Pokrycie kursami — ile rozegranych meczów ma pobrane kursy (dokładność bilansu) */}
+        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+          <div className="rounded-xl border border-border bg-card/60 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Rozegrane mecze
+            </p>
+            <p className="font-display text-2xl font-extrabold tabular-nums">{coverage.finished}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card/60 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Z pobranymi kursami
+            </p>
+            <p className="font-display text-2xl font-extrabold tabular-nums">
+              {coverage.withOdds}
+              <span className="text-muted-foreground text-sm font-semibold ml-1">
+                / {coverage.finished} ({coveragePct}%)
+              </span>
+            </p>
+          </div>
+        </div>
+
         <MoneyBoard rows={rows} currentUserId={user.id} matchInfo={matchInfo} />
         <p className="text-muted-foreground text-xs">
           Kliknij gracza z trafieniami, aby zobaczyć mecze składające się na dodatnią część bilansu.
+          {missing > 0 && ` Bilans pomija ${missing} rozegranych meczów bez kursów.`}
         </p>
-        {missing > 0 && (
-          <p className="text-muted-foreground text-xs">
-            Bilans liczony z {coverage.withOdds} z {coverage.finished} rozegranych meczów
-            (brak kursów dla {missing}).
-          </p>
-        )}
       </section>
 
       <section className="space-y-3">

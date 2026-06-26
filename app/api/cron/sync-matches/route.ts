@@ -22,6 +22,7 @@ type FdResponse = { matches: FdMatch[] }
 
 const STAGE_MAP: Record<string, string> = {
   GROUP_STAGE: "GROUP",
+  LAST_32: "R32",
   LAST_16: "R16",
   ROUND_OF_16: "R16",
   QUARTER_FINALS: "QF",

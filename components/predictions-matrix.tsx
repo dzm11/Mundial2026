@@ -307,15 +307,18 @@ export function PredictionsMatrix({
   }, [filteredMatches])
 
   return (
-    <div className="space-y-4">
+    // Mobile: flex column that fills the height handed down by the page, so the
+    // ScrollArea (flex-1) gets a *definite* height and becomes the real scroll
+    // root — only then can the header row's `sticky top-0` pin. Desktop: plain block.
+    <div className="flex min-h-0 flex-1 flex-col gap-4 sm:block sm:flex-none sm:space-y-4">
       {/* Controls row: phase filter */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <PhaseFilter value={phase} onValueChange={setPhase} />
       </div>
 
       {/* Empty state when no matches match the filter */}
       {sections.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
+        <div className="flex flex-1 items-center justify-center py-16">
           <p className="text-muted-foreground text-sm">
             Brak meczów w wybranej fazie.
           </p>
@@ -330,14 +333,21 @@ export function PredictionsMatrix({
          *   which is the sole scroll root for both axes.  `TableHeader`, `TableBody`,
          *   `TableRow`, `TableHead`, and `TableCell` from shadcn/ui are used for the
          *   inner structure.
-         * - No vertical height cap on any breakpoint: the table renders at full
-         *   height and the *page* scrolls naturally (no cramped inner scroll
-         *   window).  Trade-off: `sticky top-0` on the header has no effect without
-         *   an inner scroll container — the day-section rows act as separators
-         *   instead.  The sticky LEFT match column still works; it depends on
-         *   horizontal overflow, not the vertical height cap.
+         * - Mobile (< sm): the page is locked to the viewport (see siatka/page.tsx)
+         *   and this ScrollArea is `flex-1` in a flex column, so it gets a
+         *   *definite* height and its viewport becomes the vertical scroll root.
+         *   That makes the header row's `sticky top-0` pin to the top while you
+         *   scan down the grid — the player whose column you read stays in view.
+         *   (A `max-height` does NOT work: the Radix viewport's `height:100%`
+         *   can't resolve against a max-height parent, so it grows to full content
+         *   height and the sticky header has nothing to pin against.)
+         * - Desktop (>= sm): no height constraint — the table renders at full
+         *   height and the *page* scrolls naturally.  There `sticky top-0` is inert
+         *   (no inner scroll container) and the day-section rows act as separators
+         *   instead.  The sticky LEFT match column works on both breakpoints; it
+         *   depends on horizontal overflow, not the height.
          */
-        <ScrollArea className="rounded-lg border bg-card">
+        <ScrollArea className="min-h-0 flex-1 rounded-lg border bg-card sm:flex-none">
             <table className="w-full caption-bottom text-sm">
               {/* ── Sticky header ── */}
               <TableHeader>
@@ -432,7 +442,9 @@ export function PredictionsMatrix({
         </ScrollArea>
       )}
 
-      <Legend />
+      <div className="shrink-0">
+        <Legend />
+      </div>
     </div>
   )
 }

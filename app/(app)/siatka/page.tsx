@@ -23,8 +23,12 @@ export default async function SiatkaPage() {
   const serverNow = new Date().getTime()
 
   return (
-    <div className="space-y-5">
-      <header className="space-y-1">
+    /* Mobile: lock the page to the viewport (calc subtracts the app header 3.5rem +
+       main's pt-6 1.5rem + pb-24 6rem) so the page itself doesn't scroll — only the
+       matrix scrolls internally, which is what lets its header row stay pinned.
+       Desktop (sm+): natural block flow + full-page scroll, unchanged. */
+    <div className="flex h-[calc(100dvh-11rem)] flex-col gap-5 sm:block sm:h-auto sm:space-y-5">
+      <header className="shrink-0 space-y-1">
         <h1 className="font-display text-2xl font-extrabold tracking-tight">Siatka typów</h1>
         <p className="text-muted-foreground text-sm">
           {matches.length} meczów · {players.length} graczy

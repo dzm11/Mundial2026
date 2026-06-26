@@ -451,9 +451,13 @@ export function PredictionsMatrix({
                         // Podświetlenie własnej kolumny dajemy jako półprzezroczystą
                         // nakładkę `before:` NAD solidnym tłem — nie zastępując go
                         // (bg-primary/10 jako tło wymazałoby bg-card i przezroczyściło cel).
+                        // UWAGA: nie dodawać tu `relative` — to też utility `position`,
+                        // które przez tailwind-merge wymaże `sticky` i nagłówek tej
+                        // kolumny zacznie się scrollować. `sticky` sam jest pozycjonowany,
+                        // więc `before:absolute` i tak kotwiczy się do tej komórki.
                         "sticky top-0 z-20 min-w-[6rem] bg-card px-2 py-3 text-center",
                         p.id === currentUserId &&
-                          "relative before:absolute before:inset-0 before:bg-primary/10 before:content-['']",
+                          "before:absolute before:inset-0 before:bg-primary/10 before:content-['']",
                       )}
                     >
                       <div className="relative z-[1] flex flex-col items-center gap-1">

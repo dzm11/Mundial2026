@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -253,6 +253,18 @@ export function PredictionsMatrix({
 }: Props) {
   const [phase, setPhase] = useState<PhaseKey>("upcoming")
 
+  // Mobile: chowamy strefę nagłówka (tytuł + zakładki faz) gdy scrollujemy siatkę
+  // w dół, żeby maksymalnie powiększyć tabelę; pokazujemy z powrotem przy scrollu
+  // w górę lub na samej górze (listener podpięty niżej, gdy znamy `sections`).
+  const [headerHidden, setHeaderHidden] = useState(false)
+  const scrollRootRef = useRef<HTMLDivElement>(null)
+
+  // Zmiana fazy → wracamy do widoku z nagłówkiem (reset przy zmianie, nie w efekcie).
+  const handlePhaseChange = (next: PhaseKey) => {
+    setPhase(next)
+    setHeaderHidden(false)
+  }
+
   // `now` startuje od serverNow (prop — identyczny na serwerze i przy
   // hydratacji), po zamontowaniu odświeża się co 30 s realnym czasem.
   const [now, setNow] = useState(serverNow)
@@ -306,19 +318,59 @@ export function PredictionsMatrix({
       }))
   }, [filteredMatches])
 
+  // Scroll w viewportcie Radix (siatka scrolluje się wewnętrznie na mobile)
+  // steruje chowaniem strefy nagłówka. Re-attach gdy pojawia się ScrollArea.
+  useEffect(() => {
+    const viewport = scrollRootRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    if (!viewport) return
+    let last = viewport.scrollTop
+    const onScroll = () => {
+      const cur = viewport.scrollTop
+      if (cur <= 4) setHeaderHidden(false)
+      else if (cur > last + 4) setHeaderHidden(true)
+      else if (cur < last - 4) setHeaderHidden(false)
+      last = cur
+    }
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+    return () => viewport.removeEventListener("scroll", onScroll)
+  }, [sections.length])
+
   return (
     // Mobile: flex column that fills the height handed down by the page, so the
     // ScrollArea (flex-1) gets a *definite* height and becomes the real scroll
     // root — only then can the header row's `sticky top-0` pin. Desktop: plain block.
-    <div className="flex min-h-0 flex-1 flex-col gap-4 sm:block sm:flex-none sm:space-y-4">
-      {/* Controls row: phase filter */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <PhaseFilter value={phase} onValueChange={setPhase} />
+    <div className="flex min-h-0 flex-1 flex-col sm:block sm:space-y-4">
+      {/* Strefa nagłówka (tytuł + zakładki faz). Na mobile zwija się przy scrollu
+          w dół (grid-rows 1fr→0fr daje płynną animację wysokości bez znajomości
+          jej wartości). Na desktopie zawsze rozwinięta. */}
+      <div
+        className={cn(
+          "grid shrink-0 transition-[grid-template-rows] duration-200 ease-out sm:grid-rows-[1fr]",
+          headerHidden ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-3 pb-3 sm:space-y-4 sm:pb-0">
+            <header className="space-y-1">
+              <h1 className="font-display text-2xl font-extrabold tracking-tight">Siatka typów</h1>
+              <p className="text-muted-foreground text-sm">
+                {matches.length} meczów · {players.length} graczy
+              </p>
+            </header>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <PhaseFilter value={phase} onValueChange={handlePhaseChange} />
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* Wrapper scrolla — przez niego znajdujemy viewport Radix do listenera. */}
+      <div ref={scrollRootRef} className="min-h-0 flex-1 sm:flex-none">
       {/* Empty state when no matches match the filter */}
       {sections.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center py-16">
+        <div className="flex h-full items-center justify-center py-16">
           <p className="text-muted-foreground text-sm">
             Brak meczów w wybranej fazie.
           </p>
@@ -347,7 +399,7 @@ export function PredictionsMatrix({
          *   instead.  The sticky LEFT match column works on both breakpoints; it
          *   depends on horizontal overflow, not the height.
          */
-        <ScrollArea className="min-h-0 flex-1 rounded-lg border bg-card sm:flex-none">
+        <ScrollArea className="h-full w-full rounded-lg border bg-card sm:h-auto">
             <table className="w-full caption-bottom text-sm">
               {/* ── Sticky header ── */}
               <TableHeader>
@@ -394,11 +446,17 @@ export function PredictionsMatrix({
                     <TableHead
                       key={p.id}
                       className={cn(
-                        "sticky top-0 z-20 bg-card min-w-[6rem] px-2 py-3 text-center",
-                        p.id === currentUserId && "bg-primary/10",
+                        // bg-card MUSI zostać nieprzezroczyste, żeby przewijane
+                        // komórki (typy) nie przebijały przez przyklejony nagłówek.
+                        // Podświetlenie własnej kolumny dajemy jako półprzezroczystą
+                        // nakładkę `before:` NAD solidnym tłem — nie zastępując go
+                        // (bg-primary/10 jako tło wymazałoby bg-card i przezroczyściło cel).
+                        "sticky top-0 z-20 min-w-[6rem] bg-card px-2 py-3 text-center",
+                        p.id === currentUserId &&
+                          "relative before:absolute before:inset-0 before:bg-primary/10 before:content-['']",
                       )}
                     >
-                      <div className="flex flex-col items-center gap-1">
+                      <div className="relative z-[1] flex flex-col items-center gap-1">
                         <Avatar className="size-7">
                           {p.avatar_url && (
                             <AvatarImage src={p.avatar_url} alt={p.username} />
@@ -441,6 +499,7 @@ export function PredictionsMatrix({
             </table>
         </ScrollArea>
       )}
+      </div>
 
       {/* Legenda zabiera cenną wysokość na mobile (siatka ma być na cały ekran),
           więc pokazujemy ją tylko na desktopie, gdzie strona i tak się scrolluje. */}

@@ -442,7 +442,9 @@ export function PredictionsMatrix({
         </ScrollArea>
       )}
 
-      <div className="shrink-0">
+      {/* Legenda zabiera cenną wysokość na mobile (siatka ma być na cały ekran),
+          więc pokazujemy ją tylko na desktopie, gdzie strona i tak się scrolluje. */}
+      <div className="hidden shrink-0 sm:block">
         <Legend />
       </div>
     </div>

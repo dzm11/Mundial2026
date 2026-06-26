@@ -11,6 +11,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "seed:knockout": "tsx --env-file=.env.local scripts/seed-knockout.ts",
     "reset:users": "tsx --env-file=.env.local scripts/reset-users.ts",
     "set:password": "tsx --env-file=.env.local scripts/set-password.ts",
     "scrape:odds": "tsx --env-file=.env.local scripts/scrape-odds/index.ts",

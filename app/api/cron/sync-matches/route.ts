@@ -13,7 +13,10 @@ type FdMatch = {
   homeTeam: { id: number; name: string; tla: string | null }
   awayTeam: { id: number; name: string; tla: string | null }
   score: {
+    // fullTime = wynik łączny (z dogrywką + karne). regularTime = wynik po 90 min,
+    // wypełniane TYLKO gdy był EXTRA_TIME/PENALTY_SHOOTOUT (null dla zwykłych meczów).
     fullTime: { home: number | null; away: number | null }
+    regularTime?: { home: number | null; away: number | null }
   }
   minute: number | null
 }
@@ -129,8 +132,11 @@ export async function GET(req: Request) {
   for (const m of data.matches) {
     const stage = STAGE_MAP[m.stage] ?? "GROUP"
     const fullStatus = m.status
-    const r1 = m.score.fullTime.home
-    const r2 = m.score.fullTime.away
+    // Mecze pucharowe rozliczamy wynikiem po 90 min — bez dogrywki i karnych.
+    // regularTime jest null dla zwykłych meczów, więc fallback na fullTime.
+    const reg = m.score.regularTime ?? m.score.fullTime
+    const r1 = reg.home
+    const r2 = reg.away
 
     // 1) Spróbuj match po external_id
     let local = (localMatches ?? []).find((lm) => lm.external_id === m.id)

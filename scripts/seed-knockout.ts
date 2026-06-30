@@ -27,7 +27,11 @@ type FdMatch = {
   stage: string
   homeTeam: { id: number | null; name: string | null; tla: string | null }
   awayTeam: { id: number | null; name: string | null; tla: string | null }
-  score: { fullTime: { home: number | null; away: number | null } }
+  // regularTime = wynik po 90 min (tylko gdy była dogrywka/karne); fullTime = wynik łączny.
+  score: {
+    fullTime: { home: number | null; away: number | null }
+    regularTime?: { home: number | null; away: number | null }
+  }
 }
 
 type FdResponse = { matches: FdMatch[] }
@@ -85,8 +89,9 @@ async function main() {
     team2_id: resolve(m.awayTeam.tla),
     kickoff_at: m.utcDate,
     status: m.status,
-    result1: m.score.fullTime.home,
-    result2: m.score.fullTime.away,
+    // Pucharowe rozliczamy wynikiem po 90 min — bez dogrywki i karnych.
+    result1: (m.score.regularTime ?? m.score.fullTime).home,
+    result2: (m.score.regularTime ?? m.score.fullTime).away,
     updated_at: new Date().toISOString(),
   }))
 

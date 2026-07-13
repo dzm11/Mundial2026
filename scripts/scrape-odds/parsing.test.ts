@@ -6,6 +6,10 @@ import {
   parseScore,
   parseUtcMinute,
   orientByResult,
+  extractEventInfo,
+  csFeedPath,
+  regularTimeFromPartial,
+  parseCsScores,
 } from "./parsing"
 
 describe("normalizeTeamName", () => {
@@ -89,5 +93,70 @@ describe("orientByResult", () => {
   it("brak danych → null", () => {
     expect(orientByResult(null, 1, 0, 1)).toBeNull()
     expect(orientByResult(0, 1, null, 1)).toBeNull()
+  })
+})
+
+describe("regularTimeFromPartial", () => {
+  it("mecz bez dogrywki: suma dwóch połów = wynik 90 min", () => {
+    expect(regularTimeFromPartial("2:0, 1:1")).toEqual({ home: 3, away: 1 })
+  })
+  it("mecz po dogrywce: bierzemy TYLKO dwie pierwsze połowy (90 min)", () => {
+    // Argentyna 3:1 dcz., partial 1:0, 0:1, 2:0 -> 90 min = 1:1
+    expect(regularTimeFromPartial("1:0, 0:1, 2:0")).toEqual({ home: 1, away: 1 })
+  })
+  it("za mało segmentów / brak → null", () => {
+    expect(regularTimeFromPartial("1:0")).toBeNull()
+    expect(regularTimeFromPartial(null)).toBeNull()
+    expect(regularTimeFromPartial("")).toBeNull()
+  })
+})
+
+describe("csFeedPath", () => {
+  it("buduje ścieżkę feedu correct-score (bet=8, scope=2)", () => {
+    expect(csFeedPath({ versionId: 5, sportId: 1, hash: "Wv4IS6zg", xhash: "yj559" })).toBe(
+      "5-1-Wv4IS6zg-8-2-yj559",
+    )
+  })
+})
+
+describe("extractEventInfo", () => {
+  const html =
+    'x<div id="react-event-header" data=\'{"eventData":{"id":"Wv4IS6zg","xhash":"%79%6a%35%62%66",' +
+    '"xhashf":"%79%6a%35%35%39","versionId":5,"sportId":1,"home":"Argentyna","away":"Szwajcaria",' +
+    '"tournamentId":77311}}\'></div>' +
+    '<script>var x={"startDate":1783818000,"partialresult":"1:0, 0:1, 2:0","homeResult":"3"}</script>'
+  it("wyciąga hash, xhash (z xhashf, url-decoded), wersję, sport, kickoff, partial", () => {
+    const info = extractEventInfo(html)!
+    expect(info.hash).toBe("Wv4IS6zg")
+    expect(info.xhash).toBe("yj559")
+    expect(info.versionId).toBe(5)
+    expect(info.sportId).toBe(1)
+    expect(info.home).toBe("Argentyna")
+    expect(info.startDate).toBe(1783818000)
+    expect(info.partial).toBe("1:0, 0:1, 2:0")
+  })
+  it("brak kluczowych pól → null", () => {
+    expect(extractEventInfo("<html>nic</html>")).toBeNull()
+  })
+})
+
+describe("parseCsScores", () => {
+  it("bierze najwyższy kurs per scoreline z oddsdata.back", () => {
+    const feed = {
+      d: {
+        oddsdata: {
+          back: {
+            a: { mixedParameterName: "1:1", odds: { "163": [6], "572": [6.4] } },
+            b: { mixedParameterName: "2:0", odds: { "163": [6.8], "572": [6.8] } },
+            c: { mixedParameterName: "0:0", odds: {} },
+          },
+        },
+      },
+    }
+    expect(parseCsScores(feed)).toEqual({ "1:1": 6.4, "2:0": 6.8 })
+  })
+  it("brak danych → pusty obiekt", () => {
+    expect(parseCsScores({})).toEqual({})
+    expect(parseCsScores(null)).toEqual({})
   })
 })

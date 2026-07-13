@@ -1,8 +1,10 @@
 # Zbieranie kursów correct-score (OddsPortal → Supabase)
 
 > **Dla asystenta / CI:** to jest kanoniczna strategia. Przeczytaj ten plik
-> ZAWSZE, zanim zaczniesz zbierać kursy meczów. Strategia została zweryfikowana
-> na żywo (czerwiec 2026): pełny backfill dał ~830 wierszy / 27 meczów.
+> ZAWSZE, zanim zaczniesz zbierać kursy meczów. Zweryfikowana na żywo:
+> czerwiec 2026 (backfill ~830 wierszy / 27 meczów) oraz **lipiec 2026** po
+> przejściu OddsPortal na zaszyfrowany feed kursów + zmianie bazy na wynik 90 min
+> (skrypt odszyfrowuje feed i mapuje po wyniku regulaminowym — patrz niżej).
 
 ## TL;DR — jak odpalić
 
@@ -22,8 +24,10 @@ HEADFUL=1 SCRAPE_DEBUG=1 MATCH_LIMIT=1 npm run scrape:odds
 
 Zmienne sterujące:
 - `HEADFUL=1` — pokaż okno przeglądarki (domyślnie headless).
-- `SCRAPE_DEBUG=1` — wypisz dla 1. meczu wyciągnięte nazwy drużyn + kursy.
+- `SCRAPE_DEBUG=1` — wypisz dla 1. meczu: drużyny, kickoff, wynik 90 min, liczbę
+  kursów (oraz etap, na którym mecz odpadł, jeśli się nie udało).
 - `MATCH_LIMIT=N` — ogranicz do pierwszych N linków (szybki smoke test).
+- `MATCH_URL=<url h2h>` — pomiń listę i zescrapuj tylko jeden mecz (diagnostyka).
 
 ## Wymagania
 
@@ -40,39 +44,59 @@ Zmienne sterujące:
 
 ## Jak to działa (kluczowe obejścia)
 
+> **Zmiana (lipiec 2026):** OddsPortal przestał renderować kursy w DOM — dociąga
+> je jako **zaszyfrowany feed `.dat`**. Skrypt nie skrobie już tabeli ze strony;
+> pobiera i **odszyfrowuje feed** (`decrypt.ts`). Równolegle baza przeszła na
+> **wynik regulaminowy (90 min)** — dlatego mapowanie porównuje 90 min, a nie
+> wynik po dogrywce (patrz pkt 4). To te dwie rzeczy „popsuły" starą wersję.
+
 1. **Strona wyników (geo PL):**
    `https://www.oddsportal.com/pl/football/world/mistrzostwa-swiata-2026/results/`
    - OddsPortal przekierowuje klienta z PL na ścieżkę `/pl/`; **angielski slug
      404-uje**. Dlatego startujemy od polskiego URL-a (`mistrzostwa-swiata-2026`).
 2. **Linki meczów:** prowadzą do `/football/h2h/<a>/<b>/`. Zbieramy je
    **przewijając** stronę do końca (lazy-load), aż liczba linków przestanie rosnąć.
-3. **Rynek correct-score:** strona meczu trzyma w `location.hash` id rynku w
-   formacie `#<ID>:1X2;2`. Samo ustawienie `location.hash` **nie przełącza** rynku
-   (SPA ma własny router). Trzeba:
-   1. wczytać `/football/h2h/<a>/<b>/`,
-   2. odczytać `<ID>` z domyślnego hasha,
-   3. **świeżo nawigować** do `<url>#<ID>:cs;2`.
-4. **Mapowanie meczu — po DACIE+GODZINIE (NIE po nazwach):** nazwy drużyn są
-   zawodne — `document.title` bywa raz po angielsku, raz po polsku, a nazwy się
-   różnią (`"Bosnia & Herzegovina"` vs `"Bosnia and Herzegovina"`). Dlatego:
-   - strefa przeglądarki = **UTC**, więc czas meczu ze strony == `kickoff_at`
-     z bazy (w bazie kickoff_at jest unikalny dla meczu),
-   - datę bierzemy z **nagłówka meczu** (pomijając panel boczny), parsujemy
-     `parseUtcMinute` (PL+EN skróty miesięcy) → `"YYYY-MM-DDTHH:MM"`,
-   - dopasowujemy mecz z bazy po tej minucie,
-   - **orientację scoreline i poprawność dopasowania** potwierdzamy WYNIKIEM
-     końcowym (`orientByResult`): wynik OddsPortal `gospodarz:gość` musi się
-     zgadzać z `team1:team2` w którejś orientacji (inaczej to nie ten mecz).
-   Logika jest czysta i otestowana: `scripts/scrape-odds/parsing.ts`
-   (`parseUtcMinute`, `orientByResult`) + `parsing.test.ts`.
-5. **Parsowanie kursów:** każdy wiersz to scoreline + kurs dziesiętny
-   (`"1:0  …  7.00"`). Rzadkie wyniki: `"Inny wynik"/"OTHER"`.
-6. **Zapis:** upsert do `public.match_odds` (`match_id, scoreline, odds, source`),
+   Anonimowo OddsPortal listuje tylko część meczów (te z kursami wybranych
+   domyślnie bukmacherów) — reszta bazy to i tak zwykle fikstury demo rozbieżne
+   z realnym turniejem (patrz „Pułapki”).
+3. **Kursy correct-score = zaszyfrowany feed, nie DOM:**
+   1. wczytujemy `/football/h2h/<a>/<b>/` w realnym Chrome (omija anty-bota),
+   2. z **surowego HTML-a** (nie live-DOM — React po hydratacji kasuje atrybut
+      `data` z `#react-event-header`) czytamy `EventInfo`: `hash`, `xhash`
+      (pole `xhashf`, url-decoded), `versionId`, `sportId`, `startDate`,
+      `partialresult` (`extractEventInfo`),
+   3. budujemy URL feedu correct-score: `<ver>-<sport>-<hash>-8-2-<xhash>.dat`
+      (betType **8** = correct-score, scope **2**; `csFeedPath`),
+   4. pobieramy feed **w kontekście przeglądarki** (`fetch` same-origin — te same
+      ciasteczka/UA, brak 503) i **odszyfrowujemy** (`decrypt.ts`).
+4. **Deszyfracja feedu (`decrypt.ts`):** payload to `base64("<b64_ct>:<hex_iv>")`,
+   klucz = PBKDF2(SHA-256, hasło+sól zaszyte w bundlu OddsPortal, 1000 iter, 256b),
+   szyfr AES-256-CBC; jeśli wynik ma magic gzip → gunzip. JSON ma `d.oddsdata.back`
+   z pozycjami `{ mixedParameterName: "1:0", odds: { <bookieId>: [kurs] } }`.
+   Jeśli kiedyś przestanie działać: w `app-*.js` znajdź `deriveKey({name:"PBKDF2"…})`
+   i odczytaj nowe hasło/sól z tablicy stringów.
+5. **Mapowanie meczu — po CZASIE + WYNIKU 90 MIN (NIE po nazwach):**
+   - `startDate` (unix, UTC) z feedu == `kickoff_at` w bazie (unikalny) →
+     mapujemy po minucie (`minuteKey`),
+   - **wynik 90 min** liczymy z `partialresult` (`regularTimeFromPartial`):
+     segmenty są przyrostowe per okres, więc 90 min = suma **dwóch pierwszych**
+     połów (dogrywkę/karne pomijamy). To zgadza się z `result1/result2` w bazie,
+     które też są po 90 min. **Uwaga:** feedowe `homeResult/awayResult` to wynik
+     **po dogrywce** — dlatego NIE ich używamy do orientacji,
+   - orientację scoreline potwierdzamy tym 90-min wynikiem (`orientByResult`):
+     musi się zgadzać z `team1:team2` w którejś orientacji (inaczej to nie ten mecz).
+6. **Parsowanie kursów (`parseCsScores`):** dla każdego scoreline bierzemy
+   **najwyższy kurs** spośród bukmacherów (best odds — jak w tabeli zbiorczej
+   OddsPortal). Klucz to `mixedParameterName` (perspektywa gospodarza).
+7. **Zapis:** upsert do `public.match_odds` (`match_id, scoreline, odds, source`),
    scoreline w perspektywie `team1:team2` (jeśli gospodarz OddsPortal = nasze
    `team2`, scoreline jest odwracany przez `flipScoreline`).
 
-Plik: `scripts/scrape-odds/index.ts` (I/O) + `scripts/scrape-odds/parsing.ts`
-(czyste helpery, testowane: `parsing.test.ts`).
+Pliki: `scripts/scrape-odds/index.ts` (I/O + Playwright),
+`scripts/scrape-odds/decrypt.ts` (deszyfracja feedu),
+`scripts/scrape-odds/parsing.ts` (czyste helpery, testowane w `parsing.test.ts`:
+`extractEventInfo`, `csFeedPath`, `regularTimeFromPartial`, `parseCsScores`,
+`orientByResult`, `flipScoreline`).
 
 ## Pułapki / na co uważać
 

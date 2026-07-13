@@ -26,7 +26,15 @@
  */
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
 import { createClient } from "@supabase/supabase-js"
-import { flipScoreline, parseUtcMinute, orientByResult } from "./parsing"
+import {
+  flipScoreline,
+  orientByResult,
+  extractEventInfo,
+  csFeedPath,
+  regularTimeFromPartial,
+  parseCsScores,
+} from "./parsing"
+import { decryptFeed } from "./decrypt"
 
 const RESULTS_URL =
   "https://www.oddsportal.com/pl/football/world/mistrzostwa-swiata-2026/results/"
@@ -52,10 +60,10 @@ type DbMatch = {
 type ScrapedMatch = {
   home: string // tylko do logów
   away: string // tylko do logów
-  dateText: string | null // surowy tekst daty z nagłówka, np. "20 Cze 2026, 03:00"
-  resHome: number | null // wynik końcowy gospodarza
-  resAway: number | null // wynik końcowy gościa
-  scores: Record<string, number> // { "1:0": 7.5, ..., "OTHER": 60 }
+  startDate: number // unix (s) — kickoff w UTC (klucz mapowania na bazę)
+  resHome: number | null // wynik REGULAMINOWY (90 min) gospodarza — do orientacji/weryfikacji
+  resAway: number | null // wynik REGULAMINOWY (90 min) gościa
+  scores: Record<string, number> // { "1:0": 7.5, ... } — najwyższy kurs per scoreline
 }
 
 const minuteKey = (iso: string) => new Date(iso).toISOString().slice(0, 16)
@@ -109,19 +117,6 @@ async function gotoWithRetry(page: Page, url: string, tries = 3): Promise<boolea
   return false
 }
 
-// Pozwól SPA pobrać i wyrenderować feed kursów. Czekanie na networkidle JEST
-// potrzebne — bez niego czytamy stronę zanim kursy się załadują (puste wyniki).
-// (timeout do 18s, bo OddsPortal ma live-odds i sieć rzadko się wycisza)
-async function settle(page: Page): Promise<void> {
-  try {
-    await page.waitForLoadState("networkidle", { timeout: 18000 })
-  } catch {
-    /* nie wyciszyło się — kontynuuj, dane zwykle i tak są */
-  }
-  await safeEval(page, () => window.scrollTo(0, document.body.scrollHeight / 2))
-  await page.waitForTimeout(2500)
-}
-
 // Bezpieczny evaluate — strona bywa nawigowana w trakcie (SPA), więc ponawiamy.
 async function safeEval<T>(page: Page, fn: () => T): Promise<T | null> {
   for (let i = 0; i < 6; i++) {
@@ -130,6 +125,36 @@ async function safeEval<T>(page: Page, fn: () => T): Promise<T | null> {
     } catch {
       await page.waitForTimeout(1000)
     }
+  }
+  return null
+}
+
+// Pobierz URL (same-origin) w kontekście przeglądarki — te same ciasteczka/UA co
+// strona, więc omija anty-bota (OddsPortal daje 503 na "gołe" żądania). Zwraca
+// treść odpowiedzi (tekst) albo null. Ponawiamy — SPA bywa kapryśne.
+async function fetchInPage(
+  page: Page,
+  url: string,
+  headers: Record<string, string> = {},
+): Promise<string | null> {
+  for (let i = 0; i < 4; i++) {
+    try {
+      const txt = await page.evaluate(
+        async ({ u, h }: { u: string; h: Record<string, string> }) => {
+          try {
+            const r = await fetch(u, { headers: h })
+            return r.ok ? await r.text() : null
+          } catch {
+            return null
+          }
+        },
+        { u: url, h: headers },
+      )
+      if (txt) return txt
+    } catch {
+      /* strona nawigowana w trakcie — ponów */
+    }
+    await page.waitForTimeout(1000)
   }
   return null
 }
@@ -171,124 +196,77 @@ async function collectMatchUrls(page: Page): Promise<string[]> {
   return Array.from(found)
 }
 
-// Poll: wyciągnij datę, wynik i kursy z wyrenderowanej strony correct-score.
-async function pollExtract(page: Page): Promise<ScrapedMatch | null> {
-  let scraped: ScrapedMatch | null = null
-  for (let i = 0; i < 8; i++) {
-    await page.waitForTimeout(2000)
-    scraped = await safeEval(page, () => {
-      // pomocniczo: czy element jest w panelu bocznym (inny mecz)
-      function inSidebar(el: Element | null): boolean {
-        let p: Element | null = el
-        while (p) {
-          const c = (p.className || "").toString().toLowerCase()
-          const tag = p.tagName?.toLowerCase() || ""
-          if (tag === "aside" || /sidebar|right-?col|menu|nav/.test(c)) return true
-          p = p.parentElement
-        }
-        return false
-      }
-
-      // nazwy tylko do logów (mogą być PL lub EN — nie używamy ich do mapowania)
-      let home = "",
-        away = ""
-      const titleM = document.title.match(/^(.+?)\s-\s(.+?)\s+(?:Odds|Kursy|H2H)/i)
-      if (titleM) {
-        home = titleM[1].trim()
-        away = titleM[2].trim()
-      }
-
-      // data z NAGŁÓWKA meczu (nie z panelu bocznego)
-      let dateText: string | null = null
-      const dateRe = /\d{1,2}\s+[A-Za-zżźćńółęąśŻŹĆĄŚĘŁÓŃ]{3,}\s+20\d\d[, ]+\d{1,2}:\d{2}/
-      for (const el of Array.from(document.querySelectorAll("div,span,p,h1,h2"))) {
-        const t = ((el as HTMLElement).innerText || "").replace(/\n+/g, " ").trim()
-        if (t.length < 6 || t.length > 60) continue
-        const m = t.match(dateRe)
-        if (m && !inSidebar(el)) {
-          dateText = m[0]
-          break
-        }
-      }
-
-      // wynik końcowy gospodarz:gość (do orientacji i weryfikacji)
-      let resHome: number | null = null,
-        resAway: number | null = null
-      const body = document.body.innerText.replace(/\n+/g, " ")
-      const rm = body.match(/(?:wynik\s*końcowy|final\s*result)\D{0,6}(\d{1,2})\s*[:\-–]\s*(\d{1,2})/i)
-      if (rm) {
-        resHome = Number(rm[1])
-        resAway = Number(rm[2])
-      }
-
-      // wiersze correct-score: scoreline + kurs dziesiętny
-      const scores: Record<string, number> = {}
-      for (const el of Array.from(document.querySelectorAll("div,tr"))) {
-        const t = ((el as HTMLElement).innerText || "").replace(/\n/g, " ").trim()
-        if (t.length > 45) continue
-        const sc = t.match(/^(\d{1,2})\s*[:]\s*(\d{1,2})\b/)
-        const od = t.match(/\b(\d{1,3}\.\d{2})\b/)
-        if (sc && od) {
-          scores[`${Number(sc[1])}:${Number(sc[2])}`] = Number(od[1])
-        } else if (/inny wynik|other/i.test(t) && od) {
-          scores["OTHER"] = Number(od[1])
-        }
-      }
-
-      return { home, away, dateText, resHome, resAway, scores }
-    })
-    if (scraped && Object.keys(scraped.scores).length > 3 && scraped.dateText) return scraped
-  }
-  return scraped
-}
-
-// Wczytaj stronę meczu i przełącz na correct-score. Render bywa kapryśny
-// (część chunków JS bywa ucinana), więc przy pustym wyniku PONAWIAMY cały
-// załadunek do 3× — to właśnie reload-loop daje odporność na flaky render.
+// Pobierz i odszyfruj feed correct-score OddsPortal dla danego meczu.
+//
+// OddsPortal nie renderuje już kursów w DOM — dociąga je jako zaszyfrowany blob
+// z /pl/match-event/<...>.dat. Dlatego:
+//   1. wczytujemy stronę h2h (przeglądarka omija anty-bota),
+//   2. z HTML-a bierzemy EventInfo (hash, xhash, wersja, sport, kickoff, partial),
+//   3. budujemy URL feedu correct-score i pobieramy go W KONTEKŚCIE PRZEGLĄDARKI
+//      (fetch w page.evaluate — te same ciasteczka/UA, brak 503),
+//   4. odszyfrowujemy (decrypt.ts) i parsujemy scoreline -> najwyższy kurs.
+//
+// Wynik do mapowania to wynik REGULAMINOWY (90 min), liczony z partialresult —
+// bo w bazie result1/result2 to też 90 min (bez dogrywki i karnych).
 async function scrapeMatch(page: Page, url: string, debug = false): Promise<ScrapedMatch | null> {
   const base = url.split("#")[0]
-  let scraped: ScrapedMatch | null = null
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // Nawigujemy na origin OddsPortal (ciasteczka + omijamy anty-bota), a potem
+    // pobieramy SUROWY HTML strony osobnym fetchem. Ważne: NIE czytamy live-DOM
+    // (document.outerHTML) — React po hydratacji usuwa atrybut data z
+    // #react-event-header, w którym są hash/xhash/kickoff/partial. Surowy
+    // server-HTML te pola zachowuje.
     if (!(await gotoWithRetry(page, base))) continue
-    await settle(page) // pozwól SPA się zbootstrapować i ustawić location.hash
 
-    // odczytaj id rynku z domyślnego hasha (np. "#KnyuOLXH:1X2;2" -> "KnyuOLXH")
-    let id: string | null = null
-    for (let i = 0; i < 8; i++) {
-      const h = await safeEval(page, () => location.hash)
-      if (h && h.includes(":")) {
-        id = h.replace(/^#/, "").split(":")[0]
-        break
-      }
-      await page.waitForTimeout(1500)
+    const html = await fetchInPage(page, base)
+    if (!html) {
+      if (debug) console.log(`🔎 DEBUG ${base}: nie udało się pobrać HTML meczu`)
+      continue
     }
-    if (!id) continue
+    const info = extractEventInfo(html)
+    if (!info) {
+      if (debug) console.log(`🔎 DEBUG ${base}: brak EventInfo w HTML (zmiana struktury?)`)
+      continue
+    }
 
-    // Wymuś correct-score: nawigacja do hasha + RELOAD. Sama zmiana hasha (ten sam
-    // dokument) NIE przełącza rynku — SPA zostaje na 1X2. Dopiero reload z hashem
-    // ":cs;2" w URL inicjalizuje stronę na rynku correct-score.
-    if (!(await gotoWithRetry(page, `${base}#${id}:cs;2`))) continue
+    // Pobierz feed correct-score w kontekście przeglądarki (te same ciasteczka/UA
+    // co strona → brak 503; fetch same-origin do /pl/match-event/<...>.dat).
+    const feedUrl = `/pl/match-event/${csFeedPath(info)}.dat?_=${Date.now()}`
+    const enc = await fetchInPage(page, feedUrl, { "X-Requested-With": "XMLHttpRequest" })
+    if (!enc) {
+      if (debug) console.log(`🔎 DEBUG ${base}: feed correct-score pusty (${feedUrl})`)
+      continue
+    }
+
+    let scores: Record<string, number> = {}
     try {
-      await page.reload({ waitUntil: "load", timeout: 40000 })
+      scores = parseCsScores(JSON.parse(await decryptFeed(enc)))
     } catch {
-      /* spróbujemy i tak odczytać */
+      /* zły payload / zmiana szyfrowania — ponów albo pomiń */
     }
-    await settle(page)
 
-    scraped = await pollExtract(page)
-    if (scraped && Object.keys(scraped.scores).length > 3) break
+    const rt = regularTimeFromPartial(info.partial)
+    const scraped: ScrapedMatch = {
+      home: info.home,
+      away: info.away,
+      startDate: info.startDate,
+      resHome: rt?.home ?? null,
+      resAway: rt?.away ?? null,
+      scores,
+    }
+
+    if (debug) {
+      console.log(
+        `🔎 DEBUG ${base}: "${scraped.home}" vs "${scraped.away}" | kickoff=${new Date(
+          scraped.startDate * 1000,
+        ).toISOString()} wynik90=${scraped.resHome}:${scraped.resAway} | kursy=${Object.keys(scraped.scores).length}`,
+      )
+    }
+
+    if (Object.keys(scraped.scores).length >= 3) return scraped
   }
-
-  if (debug) {
-    console.log(
-      `🔎 DEBUG ${base}: "${scraped?.home}" vs "${scraped?.away}" | data="${scraped?.dateText}" ` +
-        `wynik=${scraped?.resHome}:${scraped?.resAway} | kursy=${scraped ? Object.keys(scraped.scores).length : 0}`,
-    )
-  }
-
-  if (!scraped || Object.keys(scraped.scores).length === 0) return null
-  return scraped
+  return null
 }
 
 // Dopasuj zescrapowany mecz do bazy po dacie+godzinie, orientuj scoreline wynikiem.
@@ -296,8 +274,7 @@ function matchByDateTime(
   scraped: ScrapedMatch,
   byTime: Map<string, DbMatch[]>,
 ): { m: DbMatch; flip: boolean } | null {
-  const iso = parseUtcMinute(scraped.dateText)
-  if (!iso) return null
+  const iso = minuteKey(new Date(scraped.startDate * 1000).toISOString())
   const candidates = byTime.get(iso)
   if (!candidates || candidates.length === 0) return null
 
@@ -358,7 +335,7 @@ async function main() {
         const matched = matchByDateTime(scraped, byTime)
         if (!matched) {
           skipped.push(
-            `${url} (${scraped.home} vs ${scraped.away}, ${scraped.dateText}, wynik ${scraped.resHome}:${scraped.resAway} — brak dopasowania)`,
+            `${url} (${scraped.home} vs ${scraped.away}, ${new Date(scraped.startDate * 1000).toISOString()}, wynik90 ${scraped.resHome}:${scraped.resAway} — brak dopasowania)`,
           )
           continue
         }

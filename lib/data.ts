@@ -43,14 +43,23 @@ export function sortPlayers(players: Player[]): Player[] {
 
 export async function getMatchOdds(): Promise<OddsByMatch> {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from("match_odds")
-    .select("match_id, scoreline, odds")
+  // Supabase zwraca max 1000 wierszy na zapytanie — a match_odds ma ich >2000
+  // (correct-score to ~31 wyników na mecz). Bez stronicowania część kursów
+  // znikała cicho i bilanse liczyły się błędnie. Pobieramy stronami po 1000.
+  const PAGE = 1000
   const map: OddsByMatch = new Map()
-  for (const row of (data ?? []) as MatchOddsRow[]) {
-    const rec = map.get(row.match_id) ?? {}
-    rec[row.scoreline] = Number(row.odds)
-    map.set(row.match_id, rec)
+  for (let from = 0; ; from += PAGE) {
+    const { data } = await supabase
+      .from("match_odds")
+      .select("match_id, scoreline, odds")
+      .range(from, from + PAGE - 1)
+    const rows = (data ?? []) as MatchOddsRow[]
+    for (const row of rows) {
+      const rec = map.get(row.match_id) ?? {}
+      rec[row.scoreline] = Number(row.odds)
+      map.set(row.match_id, rec)
+    }
+    if (rows.length < PAGE) break
   }
   return map
 }

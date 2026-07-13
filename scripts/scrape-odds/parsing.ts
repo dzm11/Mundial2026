@@ -78,6 +78,88 @@ export function parseUtcMinute(dateText: string | null | undefined): string | nu
   return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hh)}:${pad2(mm)}`
 }
 
+// ── Feed correct-score OddsPortal (zaszyfrowany .dat, patrz decrypt.ts) ──
+
+// Info o meczu wyciągnięte ze strony h2h (z atrybutu data #react-event-header
+// + osadzonego JSON-a eventBody). Wystarcza do zbudowania URL-a feedu kursów
+// i do zmapowania meczu na bazę (czas + wynik regulaminowy).
+export type EventInfo = {
+  hash: string // np. "Wv4IS6zg" — id zdarzenia w URL-u feedu
+  xhash: string // np. "yj559" — token feedu (z pola xhashf, url-decoded)
+  versionId: number
+  sportId: number
+  home: string
+  away: string
+  startDate: number // unix (s) — kickoff w UTC
+  partial: string | null // np. "1:0, 0:1, 2:0" (przyrostowo per połowa/dogrywka)
+}
+
+// Wyciągnij EventInfo z HTML-a strony meczu. Tolerancyjne na dwa kodowania:
+// atrybut data #react-event-header ma czyste cudzysłowy, a osadzony blok
+// eventBody bywa encodowany (&quot;). Zwraca null, gdy brak kluczowych pól.
+export function extractEventInfo(html: string): EventInfo | null {
+  const hash = html.match(/"id":"([A-Za-z0-9]{6,12})","xhash"/)?.[1]
+  const xhashEnc = html.match(/"xhashf":"([^"]+)"/)?.[1]
+  const versionId = html.match(/"versionId":(\d+)/)?.[1]
+  const sportId = html.match(/"sportId":(\d+)/)?.[1]
+  const home = html.match(/"home":"([^"]*)","away"/)?.[1]
+  const away = html.match(/"away":"([^"]*)","tournamentId"/)?.[1]
+  const startDate = html.match(/(?:&quot;|")startDate(?:&quot;|"):(\d+)/)?.[1]
+  const partial = html.match(/(?:&quot;|")partialresult(?:&quot;|"):(?:&quot;|")([^"&]*)/)?.[1] ?? null
+  if (!hash || !xhashEnc || !versionId || !sportId || !startDate) return null
+  return {
+    hash,
+    xhash: decodeURIComponent(xhashEnc),
+    versionId: Number(versionId),
+    sportId: Number(sportId),
+    home: home ?? "",
+    away: away ?? "",
+    startDate: Number(startDate),
+    partial,
+  }
+}
+
+// Ścieżka feedu correct-score: format "<ver>-<sport>-<hash>-<bet>-<scope>-<xhash>".
+// Rynek correct-score to betTypeId=8, scopeId=2 (mecz, pełny czas).
+export function csFeedPath(info: Pick<EventInfo, "versionId" | "sportId" | "hash" | "xhash">): string {
+  return `${info.versionId}-${info.sportId}-${info.hash}-8-2-${info.xhash}`
+}
+
+// Wynik regulaminowy (90 min) z pola partialresult. Segmenty są przyrostowe
+// per okres: [1. połowa, 2. połowa, (dogrywka...)]. 90 min = suma dwóch pierwszych.
+// Zwraca null, gdy brak co najmniej dwóch segmentów (np. mecz nierozegrany).
+export function regularTimeFromPartial(partial: string | null): { home: number; away: number } | null {
+  if (!partial) return null
+  const segs = partial
+    .split(",")
+    .map((s) => s.trim())
+    .map((s) => s.match(/(\d+)\s*:\s*(\d+)/))
+    .filter((m): m is RegExpMatchArray => !!m)
+  if (segs.length < 2) return null
+  return {
+    home: Number(segs[0][1]) + Number(segs[1][1]),
+    away: Number(segs[0][2]) + Number(segs[1][2]),
+  }
+}
+
+// Z odszyfrowanego JSON-a feedu correct-score wyciągnij mapę { "1:0": kurs, ... }.
+// Dla każdego scoreline bierzemy NAJWYŻSZY kurs spośród bukmacherów (best odds) —
+// zgodnie z tym, co OddsPortal pokazuje w tabeli zbiorczej correct-score.
+export function parseCsScores(feedJson: unknown): Record<string, number> {
+  const back = (feedJson as { d?: { oddsdata?: { back?: Record<string, unknown> } } })?.d?.oddsdata?.back
+  const scores: Record<string, number> = {}
+  if (!back) return scores
+  for (const entry of Object.values(back)) {
+    const e = entry as { mixedParameterName?: string; odds?: Record<string, number[]> }
+    const sl = e.mixedParameterName
+    if (!sl || !e.odds) continue
+    const vals: number[] = []
+    for (const arr of Object.values(e.odds)) if (Array.isArray(arr) && arr[0] != null) vals.push(arr[0])
+    if (vals.length) scores[sl.replace(/\s/g, "")] = Math.max(...vals)
+  }
+  return scores
+}
+
 // Orientacja scoreline z wyniku końcowego: czy kolejność gospodarz:gość (OddsPortal)
 // zgadza się z team1:team2 (baza). Zwraca null, gdy wynik nie pasuje w żadnej orientacji
 // (czyli to NIE jest ten mecz) — służy też jako weryfikacja dopasowania.
